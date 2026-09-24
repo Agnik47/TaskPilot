@@ -237,3 +237,116 @@ export async function deleteTask(req, res, next) {
     next(err);
   }
 }
+
+const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
+const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+const STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE'];
+const MAX_BULK_TASKS = 200;
+
+// Creates many tasks in one project at once (spreadsheet entry / paste from
+// Excel). Same rules as createTask — employees can only assign to themselves —
+// plus: every row is validated before anything is written, so a batch is all
+// or nothing, and owners can only assign to members of the project.
+export async function bulkCreateTasks(req, res, next) {
+  try {
+    const { projectId, tasks: rows } = req.body;
+
+    if (!projectId || !Array.isArray(rows) || rows.length === 0) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'projectId and a non-empty tasks array are required.' });
+    }
+    if (rows.length > MAX_BULK_TASKS) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: `You can create up to ${MAX_BULK_TASKS} tasks at once.` });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, name: true, workspaceId: true, members: { select: { userId: true } } },
+    });
+    if (!project || project.workspaceId !== req.workspaceId) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Project not found.' });
+    }
+
+    const assignable = new Set([...project.members.map((m) => m.userId), req.dbUser.id]);
+    const errors = [];
+
+    const data = rows.map((row, i) => {
+      const n = i + 1;
+      const title = typeof row?.title === 'string' ? row.title.trim() : '';
+      const due = row?.due_date ? new Date(row.due_date) : null;
+
+      if (!title) errors.push({ row: n, field: 'title', message: `Row ${n}: title is required.` });
+      else if (title.length > 500) errors.push({ row: n, field: 'title', message: `Row ${n}: title is too long.` });
+      if (!due || Number.isNaN(due.getTime())) errors.push({ row: n, field: 'due_date', message: `Row ${n}: a valid due date is required.` });
+      if (row?.type && !TASK_TYPES.includes(row.type)) errors.push({ row: n, field: 'type', message: `Row ${n}: invalid type.` });
+      if (row?.priority && !PRIORITIES.includes(row.priority)) errors.push({ row: n, field: 'priority', message: `Row ${n}: invalid priority.` });
+      if (row?.status && !STATUSES.includes(row.status)) errors.push({ row: n, field: 'status', message: `Row ${n}: invalid status.` });
+
+      const assigneeId = resolveAssigneeId(req.dbUser.id, req.orgRole, row?.assigneeId);
+      if (!assignable.has(assigneeId)) {
+        errors.push({ row: n, field: 'assigneeId', message: `Row ${n}: the assignee isn't a member of this project.` });
+      }
+
+      return {
+        workspaceId: req.workspaceId,
+        projectId,
+        title,
+        description: typeof row?.description === 'string' && row.description.trim() ? row.description.trim() : null,
+        type: row?.type || undefined,
+        priority: row?.priority || undefined,
+        status: row?.status || undefined,
+        creatorId: req.dbUser.id,
+        assigneeId,
+        due_date: due,
+        completedAt: row?.status === 'DONE' ? new Date() : null,
+      };
+    });
+
+    if (errors.length) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: errors[0].message, errors });
+    }
+
+    const assigneeIds = [...new Set(data.map((d) => d.assigneeId))];
+    const [created, users] = await Promise.all([
+      prisma.task.createManyAndReturn({ data }),
+      prisma.user.findMany({ where: { id: { in: assigneeIds } } }),
+    ]);
+
+    const usersById = new Map(users.map((u) => [u.id, u]));
+    const projectRef = { id: project.id, name: project.name, workspaceId: project.workspaceId };
+    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: projectRef }));
+
+    logActivitiesInBackground(
+      tasks.map((t) => ({
+        workspaceId: req.workspaceId,
+        type: 'TASK_CREATED',
+        message: `${req.dbUser.name} created "${t.title}"`,
+        actorId: req.dbUser.id,
+        taskId: t.id,
+        projectId,
+      })),
+      req.dbUser
+    );
+
+    // One notification per person, not per row: a pasted sheet of 30 tasks
+    // shouldn't send someone 30 alerts.
+    const byAssignee = new Map();
+    for (const t of tasks) byAssignee.set(t.assigneeId, [...(byAssignee.get(t.assigneeId) || []), t]);
+    notifyInBackground(
+      [...byAssignee.entries()].map(([userId, assigned]) => ({
+        workspaceId: req.workspaceId,
+        userId,
+        type: 'TASK_ASSIGNED',
+        message: assigned.length === 1
+          ? `${req.dbUser.name} assigned you "${assigned[0].title}"`
+          : `${req.dbUser.name} assigned you ${assigned.length} tasks in "${project.name}"`,
+        taskId: assigned.length === 1 ? assigned[0].id : null,
+        projectId,
+      })),
+      req.dbUser
+    );
+
+    res.status(201).json(tasks);
+  } catch (err) {
+    next(err);
+  }
+}

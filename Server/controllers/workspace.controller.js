@@ -9,11 +9,13 @@ const DEFAULT_SETTINGS = {
   defaultTaskPriority: 'MEDIUM',
   defaultTaskType: 'TASK',
   weekStartsOn: 0, // 0 = Sunday, 1 = Monday
+  defaultTaskView: 'table', // 'table' | 'sheet' — how a project's tasks open
 };
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
 const WEEK_STARTS = [0, 1];
+const TASK_VIEWS = ['table', 'sheet'];
 
 function readSettings(org) {
   return { ...DEFAULT_SETTINGS, ...(org.publicMetadata?.settings || {}) };
@@ -30,7 +32,7 @@ export async function getSettings(req, res, next) {
 
 export async function updateSettings(req, res, next) {
   try {
-    const { defaultTaskPriority, defaultTaskType, weekStartsOn } = req.body;
+    const { defaultTaskPriority, defaultTaskType, weekStartsOn, defaultTaskView } = req.body;
     const changes = {};
 
     if (defaultTaskPriority !== undefined) {
@@ -52,6 +54,13 @@ export async function updateSettings(req, res, next) {
         return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Week must start on Sunday or Monday.' });
       }
       changes.weekStartsOn = weekStartsOn;
+    }
+
+    if (defaultTaskView !== undefined) {
+      if (!TASK_VIEWS.includes(defaultTaskView)) {
+        return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Default task view must be table or sheet.' });
+      }
+      changes.defaultTaskView = defaultTaskView;
     }
 
     const org = await clerkClient.organizations.getOrganization({ organizationId: req.workspaceId });
