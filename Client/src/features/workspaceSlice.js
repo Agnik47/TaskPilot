@@ -8,6 +8,7 @@ export const DEFAULT_WORKSPACE_SETTINGS = {
     defaultTaskType: "TASK",
     weekStartsOn: 0,
     defaultTaskView: "table", // "table" | "sheet"
+    requireApproval: true, // assigned tasks need an owner's approval to be Done
 };
 
 const initialState = {
@@ -69,9 +70,33 @@ export const bulkCreateTasks = createAsyncThunk("workspace/bulkCreateTasks", asy
     return data;
 });
 
-export const updateTask = createAsyncThunk("workspace/updateTask", async ({ id, ...changes }) => {
-    const { data } = await api.put(`/tasks/${id}`, changes);
-    return data;
+// Keeps the server's explanation (e.g. "only an owner can reopen it") instead
+// of Redux's generic "Request failed with status code 400".
+const serverError = (err, rejectWithValue) =>
+    rejectWithValue({ message: err?.response?.data?.message || err?.message || "Something went wrong" });
+
+// `optimistic` (optional) overrides what the UI shows while saving — e.g. an
+// employee's "Done" appears as "In Review" straight away. It isn't sent.
+export const updateTask = createAsyncThunk("workspace/updateTask", async (arg, { rejectWithValue }) => {
+    const changes = { ...arg };
+    delete changes.id;
+    delete changes.optimistic;
+    try {
+        const { data } = await api.put(`/tasks/${arg.id}`, changes);
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
+// Owner decision on a task in review: decision "approve" | "changes", optional note.
+export const reviewTask = createAsyncThunk("workspace/reviewTask", async ({ id, decision, note }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post(`/tasks/${id}/review`, { decision, note });
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
 });
 
 export const deleteTask = createAsyncThunk("workspace/deleteTask", async (taskIds) => {
@@ -83,6 +108,36 @@ export const deleteTask = createAsyncThunk("workspace/deleteTask", async (taskId
 // so an optimistic change can be rolled back if the server rejects it. Kept
 // outside the store because it's transient bookkeeping, not app state.
 const taskSnapshots = new Map();
+
+function applyOptimistic(state, requestId, taskId, changes) {
+    for (const project of state.projects) {
+        const task = project.tasks?.find((t) => t.id === taskId);
+        if (task) {
+            taskSnapshots.set(requestId, { ...task });
+            Object.assign(task, changes);
+            return;
+        }
+    }
+}
+
+function rollback(state, requestId) {
+    const snapshot = taskSnapshots.get(requestId);
+    taskSnapshots.delete(requestId);
+    if (!snapshot) return;
+    for (const project of state.projects) {
+        const index = project.tasks?.findIndex((t) => t.id === snapshot.id) ?? -1;
+        if (index !== -1) {
+            project.tasks[index] = snapshot;
+            return;
+        }
+    }
+}
+
+function replaceTask(state, task) {
+    state.projects = state.projects.map((p) =>
+        p.id === task.projectId ? { ...p, tasks: p.tasks.map((t) => (t.id === task.id ? task : t)) } : p
+    );
+}
 
 const workspaceSlice = createSlice({
     name: "workspace",
@@ -145,36 +200,22 @@ const workspaceSlice = createSlice({
             // Optimistic: apply the edit immediately so status changes feel
             // instant; the server response (or a rollback) settles it.
             .addCase(updateTask.pending, (state, action) => {
-                const { id, ...changes } = action.meta.arg;
-                for (const project of state.projects) {
-                    const task = project.tasks?.find((t) => t.id === id);
-                    if (task) {
-                        taskSnapshots.set(action.meta.requestId, { ...task });
-                        Object.assign(task, changes);
-                        break;
-                    }
-                }
+                const { id, optimistic, ...changes } = action.meta.arg;
+                applyOptimistic(state, action.meta.requestId, id, { ...changes, ...optimistic });
             })
-            .addCase(updateTask.rejected, (state, action) => {
-                const snapshot = taskSnapshots.get(action.meta.requestId);
+            .addCase(reviewTask.pending, (state, action) => {
+                const { id, decision } = action.meta.arg;
+                applyOptimistic(state, action.meta.requestId, id, { status: decision === "approve" ? "DONE" : "IN_PROGRESS" });
+            })
+            .addCase(reviewTask.rejected, (state, action) => rollback(state, action.meta.requestId))
+            .addCase(reviewTask.fulfilled, (state, action) => {
                 taskSnapshots.delete(action.meta.requestId);
-                if (!snapshot) return;
-                for (const project of state.projects) {
-                    const index = project.tasks?.findIndex((t) => t.id === snapshot.id) ?? -1;
-                    if (index !== -1) {
-                        project.tasks[index] = snapshot;
-                        break;
-                    }
-                }
+                replaceTask(state, action.payload);
             })
+            .addCase(updateTask.rejected, (state, action) => rollback(state, action.meta.requestId))
             .addCase(updateTask.fulfilled, (state, action) => {
                 taskSnapshots.delete(action.meta.requestId);
-                const task = action.payload;
-                state.projects = state.projects.map((p) =>
-                    p.id === task.projectId
-                        ? { ...p, tasks: p.tasks.map((t) => (t.id === task.id ? task : t)) }
-                        : p
-                );
+                replaceTask(state, action.payload);
             })
             .addCase(deleteTask.fulfilled, (state, action) => {
                 const ids = action.payload;

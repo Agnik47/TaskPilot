@@ -15,7 +15,8 @@ const EVENTS = [
     { key: "overdue", label: "Task overdue", help: "A task you own has passed its due date." },
     { key: "comments", label: "New comments", help: "Someone comments on a task you own or created." },
     { key: "mentions", label: "Mentions", help: "Someone mentions you in a task or comment." },
-    { key: "taskCompleted", label: "Task completed", help: "A task you created or assigned is marked done." },
+    { key: "taskCompleted", label: "Work ready for review", help: "Someone finishes a task you assigned, and it needs your approval." },
+    { key: "reviewResults", label: "Review results", help: "Your finished work is approved, or sent back with changes." },
 ];
 
 const PREF_KEYS = [...EVENTS.map((e) => e.key), "sound", "uiSounds"];

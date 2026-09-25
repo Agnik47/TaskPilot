@@ -10,6 +10,12 @@ import useTaskChannel from "../hooks/useTaskChannel";
 import MentionInput from "../components/MentionInput";
 import { parseMentions, toMentionMarkup } from "../lib/mentions";
 import { sfx } from "../lib/sound";
+import { useSelector } from "react-redux";
+import useOrgRole from "../hooks/useOrgRole";
+import useTaskActions from "../hooks/useTaskActions";
+import CellSelect from "../components/sheet/CellSelect";
+import ReviewBanner from "../components/review/ReviewBanner";
+import { STATUS_META, statusOptionsFor } from "../lib/taskWorkflow";
 
 const TaskDetails = () => {
 
@@ -28,6 +34,9 @@ const TaskDetails = () => {
     const [isPosting, setIsPosting] = useState(false);
 
     const currentWorkspace = useCurrentWorkspace();
+    const { isOwner } = useOrgRole();
+    const settings = useSelector((state) => state.workspace.settings);
+    const { setStatus } = useTaskActions();
 
     const fetchComments = async () => {
         try {
@@ -246,9 +255,26 @@ const TaskDetails = () => {
                     <div className="mb-3">
                         <h1 className="text-lg font-medium text-gray-900 dark:text-zinc-100">{task.title}</h1>
                         <div className="flex flex-wrap gap-2 mt-2">
-                            <span className="px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-300 text-xs">
-                                {task.status}
-                            </span>
+                            {isOwner || task.creatorId === user?.id || task.assigneeId === user?.id ? (
+                                <CellSelect
+                                    label="Status"
+                                    value={task.status}
+                                    options={statusOptionsFor(task, { isOwner, settings })}
+                                    onChange={(s) => setStatus(task, s)}
+                                    menuWidth={230}
+                                    className="h-7 pl-1 pr-2 rounded-full border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                                    renderValue={() => (
+                                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_META[task.status]?.pill}`}>
+                                            <span className={`size-1.5 rounded-full ${STATUS_META[task.status]?.dot}`} />
+                                            {STATUS_META[task.status]?.label ?? task.status}
+                                        </span>
+                                    )}
+                                />
+                            ) : (
+                                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_META[task.status]?.pill}`}>
+                                    {STATUS_META[task.status]?.label ?? task.status}
+                                </span>
+                            )}
                             <span className="px-2 py-0.5 rounded bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-300 text-xs">
                                 {task.type}
                             </span>
@@ -256,6 +282,10 @@ const TaskDetails = () => {
                                 {task.priority}
                             </span>
                         </div>
+                    </div>
+
+                    <div className="mb-3 empty:hidden">
+                        <ReviewBanner task={task} />
                     </div>
 
                     {task.description && (

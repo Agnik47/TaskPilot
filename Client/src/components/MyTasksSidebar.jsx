@@ -18,6 +18,8 @@ function MyTasksSidebar() {
         switch (status) {
             case 'DONE':
                 return 'bg-green-500';
+            case 'IN_REVIEW':
+                return 'bg-violet-500';
             case 'IN_PROGRESS':
                 return 'bg-yellow-500';
             case 'TODO':

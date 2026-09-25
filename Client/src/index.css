@@ -12,6 +12,14 @@
 :root { color-scheme: light; }
 .dark { color-scheme: dark; }
 
+/* Chrome on Windows draws <select> popups from the option colors rather than
+   color-scheme, so dark mode otherwise shows light text on a white list. */
+.dark select option,
+.dark select optgroup {
+    background-color: #18181b;
+    color: #f4f4f5;
+}
+
 /* Page background behind the app (visible on overscroll / short pages). */
 body { background-color: #ffffff; }
 .dark body { background-color: #09090b; }

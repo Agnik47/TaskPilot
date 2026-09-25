@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
-import { AtSign, BellIcon, CheckCheck, UserPlus } from "lucide-react";
+import { AtSign, BellIcon, CheckCheck, CheckCircle2, RotateCcw, ShieldCheck, UserPlus } from "lucide-react";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, notificationHref } from "../features/notificationsSlice";
 
-const TYPE_ICON = { TASK_ASSIGNED: UserPlus, MENTION: AtSign };
+const TYPE_ICON = { TASK_ASSIGNED: UserPlus, MENTION: AtSign, REVIEW_REQUESTED: ShieldCheck, TASK_APPROVED: CheckCircle2, CHANGES_REQUESTED: RotateCcw };
 
 export default function NotificationBell() {
     const { items, unreadCount, loaded } = useSelector((state) => state.notifications);
@@ -72,7 +72,7 @@ export default function NotificationBell() {
                             <div className="px-4 py-10 text-center">
                                 <BellIcon className="size-6 mx-auto text-zinc-300 dark:text-zinc-600 mb-2" />
                                 <p className="text-sm text-zinc-600 dark:text-zinc-400">You're all caught up</p>
-                                <p className="text-xs text-zinc-400 mt-1">Task assignments and @mentions show up here.</p>
+                                <p className="text-xs text-zinc-400 mt-1">Assignments, @mentions and reviews show up here.</p>
                             </div>
                         ) : (
                             <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">

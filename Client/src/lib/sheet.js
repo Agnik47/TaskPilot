@@ -140,3 +140,26 @@ export function parseCellForColumn(column, raw, { people }) {
             return { value: undefined, ok: true };
     }
 }
+
+// Column order used when pasted rows have no header row.
+export const PASTE_ORDER = ["title", "assigneeId", "status", "priority", "due_date", "description", "type"];
+
+const HEADER_ALIASES = {
+    title: ["task", "tasks", "title", "name", "task name", "summary", "item"],
+    assigneeId: ["assignee", "assigned to", "assigned", "owner", "person", "responsible", "member"],
+    status: ["status", "state", "progress"],
+    priority: ["priority", "prio", "importance"],
+    due_date: ["due", "due date", "deadline", "date", "end date", "due on", "target date"],
+    description: ["description", "details", "notes", "note", "comments"],
+    type: ["type", "kind", "category", "task type"],
+};
+
+// If a pasted first row looks like column headers, returns the field for each
+// column (null for unknown columns); otherwise null. Needs 2+ recognised headers.
+export function mapHeaderRow(cells) {
+    const fields = cells.map((c) => {
+        const key = c.trim().toLowerCase().replace(/[*:]/g, "").trim();
+        return Object.keys(HEADER_ALIASES).find((field) => HEADER_ALIASES[field].includes(key)) ?? null;
+    });
+    return fields.filter(Boolean).length >= 2 ? fields : null;
+}

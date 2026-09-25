@@ -24,7 +24,7 @@ const ProjectAnalytics = ({ project, tasks }) => {
             overdue: 0,
         };
 
-        const statusMap = { TODO: 0, IN_PROGRESS: 0, BLOCKED: 0, DONE: 0 };
+        const statusMap = { TODO: 0, IN_PROGRESS: 0, BLOCKED: 0, IN_REVIEW: 0, DONE: 0 };
         const typeMap = { TASK: 0, BUG: 0, FEATURE: 0, IMPROVEMENT: 0, OTHER: 0 };
         const priorityMap = { LOW: 0, MEDIUM: 0, HIGH: 0, URGENT: 0 };
 
@@ -33,7 +33,7 @@ const ProjectAnalytics = ({ project, tasks }) => {
             if (t.status === "IN_PROGRESS") stats.inProgress++;
             if (t.status === "TODO") stats.todo++;
             if (t.status === "BLOCKED") stats.blocked = (stats.blocked || 0) + 1;
-            if (new Date(t.due_date) < now && t.status !== "DONE") stats.overdue++;
+            if (new Date(t.due_date) < now && t.status !== "DONE" && t.status !== "IN_REVIEW") stats.overdue++;
 
             if (statusMap[t.status] !== undefined) statusMap[t.status]++;
             if (typeMap[t.type] !== undefined) typeMap[t.type]++;

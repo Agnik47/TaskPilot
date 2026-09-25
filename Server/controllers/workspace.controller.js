@@ -1,30 +1,18 @@
 import prisma from '../config/prisma.js';
 import clerkClient from '../config/clerk.js';
+import { getWorkspaceSettings, saveWorkspaceSettings } from '../services/workspaceSettings.service.js';
 
-// Workspace-level preferences live in the Clerk organization's publicMetadata
-// (Clerk already owns the workspace record), so no local table is needed.
-// publicMetadata is only writable server-side, which keeps owner-only
-// enforcement here rather than in the client.
-const DEFAULT_SETTINGS = {
-  defaultTaskPriority: 'MEDIUM',
-  defaultTaskType: 'TASK',
-  weekStartsOn: 0, // 0 = Sunday, 1 = Monday
-  defaultTaskView: 'table', // 'table' | 'sheet' — how a project's tasks open
-};
+// Settings are stored in Clerk org publicMetadata, which is only writable
+// server-side — so owner-only enforcement stays here, not in the client.
 
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
 const WEEK_STARTS = [0, 1];
 const TASK_VIEWS = ['table', 'sheet'];
 
-function readSettings(org) {
-  return { ...DEFAULT_SETTINGS, ...(org.publicMetadata?.settings || {}) };
-}
-
 export async function getSettings(req, res, next) {
   try {
-    const org = await clerkClient.organizations.getOrganization({ organizationId: req.workspaceId });
-    res.json(readSettings(org));
+    res.json(await getWorkspaceSettings(req.workspaceId));
   } catch (err) {
     next(err);
   }
@@ -32,7 +20,7 @@ export async function getSettings(req, res, next) {
 
 export async function updateSettings(req, res, next) {
   try {
-    const { defaultTaskPriority, defaultTaskType, weekStartsOn, defaultTaskView } = req.body;
+    const { defaultTaskPriority, defaultTaskType, weekStartsOn, defaultTaskView, requireApproval } = req.body;
     const changes = {};
 
     if (defaultTaskPriority !== undefined) {
@@ -63,14 +51,14 @@ export async function updateSettings(req, res, next) {
       changes.defaultTaskView = defaultTaskView;
     }
 
-    const org = await clerkClient.organizations.getOrganization({ organizationId: req.workspaceId });
-    const settings = { ...readSettings(org), ...changes };
+    if (requireApproval !== undefined) {
+      if (typeof requireApproval !== 'boolean') {
+        return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'requireApproval must be true or false.' });
+      }
+      changes.requireApproval = requireApproval;
+    }
 
-    await clerkClient.organizations.updateOrganizationMetadata(req.workspaceId, {
-      publicMetadata: { settings },
-    });
-
-    res.json(settings);
+    res.json(await saveWorkspaceSettings(req.workspaceId, changes));
   } catch (err) {
     next(err);
   }

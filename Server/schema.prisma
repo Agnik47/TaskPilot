@@ -11,6 +11,7 @@ enum TaskStatus {
   TODO
   IN_PROGRESS
   BLOCKED
+  IN_REVIEW // completed by the assignee, waiting for an owner's approval
   DONE
 }
 
@@ -40,6 +41,9 @@ enum Priority {
 enum NotificationType {
   TASK_ASSIGNED
   MENTION
+  REVIEW_REQUESTED
+  TASK_APPROVED
+  CHANGES_REQUESTED
 }
 
 enum ActivityType {
@@ -51,6 +55,9 @@ enum ActivityType {
   DUE_DATE_CHANGED
   COMMENT_ADDED
   TASK_COMPLETED
+  SUBMITTED_FOR_REVIEW
+  TASK_APPROVED
+  CHANGES_REQUESTED
 }
 
 // Workspaces, membership, and roles are managed by Clerk Organizations.
@@ -118,6 +125,7 @@ model Task {
   assigneeId  String
   due_date    DateTime
   completedAt DateTime?
+  submittedAt DateTime? // when it entered IN_REVIEW ("waiting since")
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 
@@ -131,6 +139,7 @@ model Task {
   @@index([workspaceId])
   @@index([projectId])
   @@index([assigneeId])
+  @@index([workspaceId, status])
   @@index([creatorId])
 }
 

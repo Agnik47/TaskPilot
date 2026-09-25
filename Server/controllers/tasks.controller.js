@@ -1,6 +1,9 @@
 import prisma from '../config/prisma.js';
 import { logActivitiesInBackground } from '../services/activity.service.js';
 import { notifyInBackground } from '../services/notifications.service.js';
+import { planStatusChange, describeStatusEvent } from '../services/taskWorkflow.service.js';
+import { getWorkspaceSettings } from '../services/workspaceSettings.service.js';
+import { emitToTask } from '../realtime.js';
 import {
   isTaskVisibleTo,
   filterTasksForRole,
@@ -8,6 +11,7 @@ import {
   canEditTask,
   canSetAssignee,
   canDeleteTask,
+  isOwner,
 } from '../services/authorization.service.js';
 
 // With the relationJoins preview feature this loads in a single SQL statement.
@@ -61,6 +65,9 @@ export async function createTask(req, res, next) {
     if (!title || !projectId || !due_date) {
       return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'title, projectId and due_date are required.' });
     }
+    if (status === 'IN_REVIEW') {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: "A new task can't start in review." });
+    }
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
@@ -85,6 +92,7 @@ export async function createTask(req, res, next) {
           creatorId: req.dbUser.id,
           assigneeId: finalAssigneeId,
           due_date: new Date(due_date),
+          completedAt: status === 'DONE' ? new Date() : null,
         },
       }),
       finalAssigneeId === req.dbUser.id ? req.dbUser : prisma.user.findUnique({ where: { id: finalAssigneeId } }),
@@ -167,19 +175,18 @@ export async function updateTask(req, res, next) {
       });
     }
 
+    // Status goes through the completion workflow (Done may become In Review).
+    let statusNotifications = [];
     if (status !== undefined && status !== existing.status) {
-      data.status = status;
-      activities.push({
-        type: 'STATUS_CHANGED',
-        message: `${req.dbUser.name} changed status from ${existing.status} to ${status}`,
-        metadata: { from: existing.status, to: status },
-      });
-
-      if (status === 'DONE') {
-        data.completedAt = new Date();
-        activities.push({ type: 'TASK_COMPLETED', message: `${req.dbUser.name} completed this task` });
-      } else if (existing.status === 'DONE') {
-        data.completedAt = null;
+      const settings = await getWorkspaceSettings(req.workspaceId);
+      const subject = { ...existing, assigneeId: data.assigneeId ?? existing.assigneeId };
+      const plan = planStatusChange({ task: subject, requested: status, actorIsOwner: isOwner(req.orgRole), settings });
+      if (plan.error) return res.status(400).json({ error: 'INVALID_TRANSITION', message: plan.error });
+      if (!plan.noop) {
+        Object.assign(data, plan.data);
+        const effects = describeStatusEvent({ event: plan.event, task: subject, actor: req.dbUser, from: existing.status, to: plan.data.status });
+        activities.push(...effects.activities);
+        statusNotifications = effects.notifications;
       }
     }
 
@@ -203,16 +210,67 @@ export async function updateTask(req, res, next) {
       req.dbUser
     );
 
+    const notifications = [...statusNotifications];
     if (data.assigneeId !== undefined) {
-      notifyInBackground([{
-        workspaceId: req.workspaceId,
-        userId: data.assigneeId,
-        type: 'TASK_ASSIGNED',
-        message: `${req.dbUser.name} assigned you "${task.title}"`,
-        taskId: task.id,
-        projectId: task.projectId,
-      }], req.dbUser);
+      notifications.push({ userId: data.assigneeId, type: 'TASK_ASSIGNED', message: `${req.dbUser.name} assigned you "${task.title}"` });
     }
+    notifyInBackground(
+      notifications.map((n) => ({ ...n, workspaceId: req.workspaceId, taskId: task.id, projectId: task.projectId })),
+      req.dbUser
+    );
+
+    res.json(task);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Owner decision on a task waiting in review: approve (-> Done) or request
+// changes (-> In Progress). An optional note is posted as a comment so it shows
+// in the task discussion (live) and the assignee sees exactly what to fix.
+export async function reviewTask(req, res, next) {
+  try {
+    const { decision, note } = req.body;
+    if (decision !== 'approve' && decision !== 'changes') {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'decision must be "approve" or "changes".' });
+    }
+    const trimmedNote = typeof note === 'string' ? note.trim().slice(0, 2000) : '';
+
+    const existing = await prisma.task.findUnique({ where: { id: req.params.id }, include: taskInclude });
+    if (!existing || existing.workspaceId !== req.workspaceId) {
+      return res.status(404).json({ error: 'NOT_FOUND', message: 'Task not found.' });
+    }
+    if (existing.status !== 'IN_REVIEW') {
+      return res.status(409).json({ error: 'NOT_IN_REVIEW', message: "This task isn't waiting for review any more." });
+    }
+
+    const settings = await getWorkspaceSettings(req.workspaceId);
+    const plan = planStatusChange({
+      task: existing,
+      requested: decision === 'approve' ? 'DONE' : 'IN_PROGRESS',
+      actorIsOwner: true,
+      settings,
+    });
+
+    const [updated, comment] = await Promise.all([
+      prisma.task.update({ where: { id: existing.id }, data: plan.data }),
+      trimmedNote
+        ? prisma.comment.create({ data: { workspaceId: req.workspaceId, content: trimmedNote, userId: req.dbUser.id, taskId: existing.id } })
+        : null,
+    ]);
+
+    const task = { ...updated, assignee: existing.assignee, creator: existing.creator, project: existing.project };
+    const effects = describeStatusEvent({ event: plan.event, task: existing, actor: req.dbUser, from: existing.status, to: plan.data.status, note: trimmedNote });
+
+    if (comment) emitToTask(existing.id, 'comment:new', { ...comment, user: req.dbUser });
+    logActivitiesInBackground(
+      effects.activities.map((a) => ({ ...a, workspaceId: req.workspaceId, actorId: req.dbUser.id, taskId: task.id, projectId: task.projectId })),
+      req.dbUser
+    );
+    notifyInBackground(
+      effects.notifications.map((n) => ({ ...n, workspaceId: req.workspaceId, taskId: task.id, projectId: task.projectId })),
+      req.dbUser
+    );
 
     res.json(task);
   } catch (err) {
@@ -240,7 +298,7 @@ export async function deleteTask(req, res, next) {
 
 const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
-const STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE'];
+const STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE']; // IN_REVIEW is only reached by finishing a task
 const MAX_BULK_TASKS = 200;
 
 // Creates many tasks in one project at once (spreadsheet entry / paste from

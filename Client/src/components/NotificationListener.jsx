@@ -15,7 +15,16 @@ import {
 } from "../features/notificationsSlice";
 
 // Which Settings → Notifications switch controls each notification type.
-const PREF_FOR_TYPE = { TASK_ASSIGNED: "taskAssigned", MENTION: "mentions" };
+const PREF_FOR_TYPE = {
+    TASK_ASSIGNED: "taskAssigned",
+    MENTION: "mentions",
+    REVIEW_REQUESTED: "taskCompleted",
+    TASK_APPROVED: "reviewResults",
+    CHANGES_REQUESTED: "reviewResults",
+};
+
+// These mean a task changed somewhere else; refresh lists so it shows here.
+const REFRESH_TYPES = new Set(["TASK_ASSIGNED", "REVIEW_REQUESTED", "TASK_APPROVED", "CHANGES_REQUESTED"]);
 
 // App-wide: loads the inbox, receives live notifications, and alerts with a
 // toast + chime. Every notification lands in the bell regardless of settings;
@@ -50,7 +59,7 @@ export default function NotificationListener() {
         const onNotification = (n) => {
             dispatch(notificationReceived(n));
             // A newly assigned task isn't in an employee's loaded list yet.
-            if (n.type === "TASK_ASSIGNED") dispatch(fetchProjects({ silent: true }));
+            if (REFRESH_TYPES.has(n.type)) dispatch(fetchProjects({ silent: true }));
 
             const { user: me, location: loc } = latest.current;
             const prefs = me?.unsafeMetadata?.notificationPrefs || {};

@@ -5,7 +5,7 @@ import toast from "react-hot-toast";
 import { errorMessage } from "../../lib/errors";
 import useOrgRole from "../../hooks/useOrgRole";
 import { updateWorkspaceSettings } from "../../features/workspaceSlice";
-import { SectionHeader, SettingsCard, FieldRow, ReadOnlyNotice, inputClass, primaryButtonClass, secondaryButtonClass } from "./SettingsUI";
+import { SectionHeader, SettingsCard, FieldRow, ReadOnlyNotice, Toggle, inputClass, primaryButtonClass, secondaryButtonClass } from "./SettingsUI";
 
 const PRIORITY_OPTIONS = [
     { value: "LOW", label: "Low" },
@@ -69,6 +69,18 @@ export default function PreferencesSettings() {
                         <select value={form.defaultTaskType} onChange={(e) => setForm({ ...form, defaultTaskType: e.target.value })} disabled={!isOwner} className={inputClass}>
                             {TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                         </select>
+                    </FieldRow>
+                </SettingsCard>
+
+                <SettingsCard
+                    title="Task approval"
+                    description="When an owner assigns a task, marking it Done sends it to review instead of closing it. Owners approve it or send it back with notes."
+                >
+                    <FieldRow label="Require approval" help="Tasks people create for themselves, and anything an owner completes, never need approval.">
+                        <div className="flex items-center gap-3 py-1">
+                            <Toggle checked={form.requireApproval !== false} onChange={(v) => setForm({ ...form, requireApproval: v })} disabled={!isOwner} label="Require approval for assigned tasks" />
+                            <span className="text-sm text-zinc-600 dark:text-zinc-400">{form.requireApproval !== false ? "On — assigned work is reviewed before it's Done" : "Off — assignees can close tasks themselves"}</span>
+                        </div>
                     </FieldRow>
                 </SettingsCard>
 

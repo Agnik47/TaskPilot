@@ -1,9 +1,12 @@
 import { format } from "date-fns";
 import toast from "react-hot-toast";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { deleteTask, updateTask } from "../features/workspaceSlice";
+import { deleteTask } from "../features/workspaceSlice";
+import useOrgRole from "../hooks/useOrgRole";
+import useTaskActions from "../hooks/useTaskActions";
+import { statusOptionsFor } from "../lib/taskWorkflow";
 import { Bug, CalendarIcon, GitCommit, MessageSquare, Square, Trash, XIcon, Zap } from "lucide-react";
 
 const typeIcons = {
@@ -25,6 +28,13 @@ const ProjectTasks = ({ tasks }) => {
     const dispatch = useDispatch();
     const navigate = useNavigate();
     const [selectedTasks, setSelectedTasks] = useState([]);
+    const { isOwner } = useOrgRole();
+    const settings = useSelector((state) => state.workspace.settings);
+    const { setStatus } = useTaskActions();
+    const statusOptions = (task) =>
+        statusOptionsFor(task, { isOwner, settings }).map((o) => (
+            <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
+        ));
 
     const [filters, setFilters] = useState({
         status: "",
@@ -55,14 +65,10 @@ const ProjectTasks = ({ tasks }) => {
         setFilters((prev) => ({ ...prev, [name]: value }));
     };
 
-    const handleStatusChange = async (taskId, newStatus) => {
-        // The store updates optimistically, so the new status shows at once;
-        // only a failure (which rolls the status back) needs a toast.
-        try {
-            await dispatch(updateTask({ id: taskId, status: newStatus })).unwrap();
-        } catch (error) {
-            toast.error(error?.response?.data?.message || error.message || "Failed to update status");
-        }
+    // Optimistic and approval-aware (an employee's "Done" becomes "In Review").
+    const handleStatusChange = (taskId, newStatus) => {
+        const task = tasks.find((t) => t.id === taskId);
+        if (task) setStatus(task, newStatus);
     };
 
     const handleDelete = async () => {
@@ -92,6 +98,7 @@ const ProjectTasks = ({ tasks }) => {
                             { label: "To Do", value: "TODO" },
                             { label: "In Progress", value: "IN_PROGRESS" },
                             { label: "Blocked", value: "BLOCKED" },
+                            { label: "In Review", value: "IN_REVIEW" },
                             { label: "Done", value: "DONE" },
                         ],
                         type: [
@@ -181,10 +188,7 @@ const ProjectTasks = ({ tasks }) => {
                                                 </td>
                                                 <td onClick={e => e.stopPropagation()} className="px-4 py-2">
                                                     <select name="status" onChange={(e) => handleStatusChange(task.id, e.target.value)} value={task.status} className="group-hover:ring ring-zinc-100 dark:ring-zinc-700 outline-none px-2 pr-4 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200 cursor-pointer" >
-                                                        <option value="TODO">To Do</option>
-                                                        <option value="IN_PROGRESS">In Progress</option>
-                                                        <option value="BLOCKED">Blocked</option>
-                                                        <option value="DONE">Done</option>
+                                                        {statusOptions(task)}
                                                     </select>
                                                 </td>
                                                 <td className="px-4 py-2">
@@ -241,10 +245,7 @@ const ProjectTasks = ({ tasks }) => {
                                         <div>
                                             <label className="text-zinc-600 dark:text-zinc-400 text-xs">Status</label>
                                             <select name="status" onChange={(e) => handleStatusChange(task.id, e.target.value)} value={task.status} className="w-full mt-1 bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-300 dark:ring-zinc-700 outline-none px-2 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200" >
-                                                <option value="TODO">To Do</option>
-                                                <option value="IN_PROGRESS">In Progress</option>
-                                                <option value="BLOCKED">Blocked</option>
-                                                <option value="DONE">Done</option>
+                                                {statusOptions(task)}
                                             </select>
                                         </div>
 

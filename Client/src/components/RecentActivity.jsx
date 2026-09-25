@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GitCommit, MessageSquare, Clock, UserPlus, ArrowRightLeft, Flag, Calendar, CheckCircle2 } from "lucide-react";
+import { GitCommit, MessageSquare, Clock, UserPlus, ArrowRightLeft, Flag, Calendar, CheckCircle2, ShieldCheck, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { useOrganization } from "@clerk/clerk-react";
 import api from "../lib/api";
@@ -13,6 +13,9 @@ const activityIcons = {
     DUE_DATE_CHANGED: { icon: Calendar, color: "text-amber-500 dark:text-amber-400" },
     COMMENT_ADDED: { icon: MessageSquare, color: "text-zinc-500 dark:text-zinc-400" },
     TASK_COMPLETED: { icon: CheckCircle2, color: "text-emerald-500 dark:text-emerald-400" },
+    SUBMITTED_FOR_REVIEW: { icon: ShieldCheck, color: "text-violet-500 dark:text-violet-400" },
+    TASK_APPROVED: { icon: CheckCircle2, color: "text-emerald-500 dark:text-emerald-400" },
+    CHANGES_REQUESTED: { icon: RotateCcw, color: "text-amber-500 dark:text-amber-400" },
 };
 
 const RecentActivity = () => {

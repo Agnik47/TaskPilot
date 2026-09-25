@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSelector } from "react-redux";
+import { isSettled } from "../lib/taskWorkflow";
 import { format, isSameDay, isBefore, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from "date-fns";
 import { CalendarIcon, Clock, User, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -29,11 +30,11 @@ const ProjectCalendar = ({ tasks }) => {
     const getTasksForDate = (date) => tasks.filter((task) => isSameDay(task.due_date, date));
 
     const upcomingTasks = tasks
-        .filter((task) => task.due_date && !isBefore(task.due_date, today) && task.status !== "DONE")
+        .filter((task) => task.due_date && !isBefore(task.due_date, today) && !isSettled(task.status))
         .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
         .slice(0, 5);
 
-    const overdueTasks = tasks.filter((task) => task.due_date && isBefore(task.due_date, today) && task.status !== "DONE");
+    const overdueTasks = tasks.filter((task) => task.due_date && isBefore(task.due_date, today) && !isSettled(task.status));
 
     const daysInMonth = eachDayOfInterval({
         start: startOfMonth(currentMonth),
@@ -78,7 +79,7 @@ const ProjectCalendar = ({ tasks }) => {
                         {daysInMonth.map((day) => {
                             const dayTasks = getTasksForDate(day);
                             const isSelected = isSameDay(day, selectedDate);
-                            const hasOverdue = dayTasks.some((t) => t.status !== "DONE" && isBefore(t.due_date, today));
+                            const hasOverdue = dayTasks.some((t) => !isSettled(t.status) && isBefore(t.due_date, today));
 
                             return (
                                 <button

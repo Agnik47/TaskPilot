@@ -26,7 +26,7 @@ export async function getSummary(req, res, next) {
     const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
     const weekEnd = new Date(todayStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-    const counts = { TODO: 0, IN_PROGRESS: 0, BLOCKED: 0, DONE: 0 };
+    const counts = { TODO: 0, IN_PROGRESS: 0, BLOCKED: 0, IN_REVIEW: 0, DONE: 0 };
     let overdue = 0;
     let dueToday = 0;
     let dueSoon = 0;
@@ -34,7 +34,7 @@ export async function getSummary(req, res, next) {
     for (const t of tasks) {
       counts[t.status] = (counts[t.status] ?? 0) + 1;
 
-      if (t.status !== 'DONE') {
+      if (t.status !== 'DONE' && t.status !== 'IN_REVIEW') {
         const due = new Date(t.due_date);
         if (due < todayStart) overdue += 1;
         else if (due >= todayStart && due < todayEnd) dueToday += 1;
@@ -47,6 +47,7 @@ export async function getSummary(req, res, next) {
       completed: counts.DONE,
       inProgress: counts.IN_PROGRESS,
       blocked: counts.BLOCKED,
+      inReview: counts.IN_REVIEW,
       todo: counts.TODO,
       overdue,
       dueToday,
@@ -58,7 +59,7 @@ export async function getSummary(req, res, next) {
 
       const workload = {};
       for (const t of tasks) {
-        if (t.status === 'DONE') continue;
+        if (t.status === 'DONE' || t.status === 'IN_REVIEW') continue;
         workload[t.assigneeId] = (workload[t.assigneeId] ?? 0) + 1;
       }
       summary.workloadByAssignee = workload;
