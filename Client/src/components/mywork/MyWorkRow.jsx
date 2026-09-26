@@ -10,6 +10,7 @@ import { STATUS_META, expectedStatus, statusOptionsFor } from "../../lib/taskWor
 import { dueInfo } from "../../lib/dates";
 import CellSelect from "../sheet/CellSelect";
 import WaitingOnBadge from "../blockers/WaitingOnBadge";
+import ChecklistProgress from "../checklist/ChecklistProgress";
 
 const PRIORITY = {
     LOW: "text-zinc-500 dark:text-zinc-400",
@@ -102,6 +103,12 @@ export default function MyWorkRow({ task, canEdit, showAssignee }) {
                     <Link to={`/projectsDetail?id=${task.projectId}&tab=tasks`} className="hover:underline truncate max-w-48">{task.projectName}</Link>
                     <span aria-hidden>·</span>
                     <span className={PRIORITY[task.priority]}>{task.priority.charAt(0) + task.priority.slice(1).toLowerCase()}</span>
+                    {task.checklist?.length > 0 && (
+                        <>
+                            <span aria-hidden>·</span>
+                            <ChecklistProgress task={task} />
+                        </>
+                    )}
                     {due && (
                         <>
                             <span aria-hidden>·</span>

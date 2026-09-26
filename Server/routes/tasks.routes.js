@@ -4,6 +4,7 @@ import requireRole from '../middleware/requireRole.js';
 import { listComments, createComment } from '../controllers/comments.controller.js';
 import { listTaskActivity } from '../controllers/activity.controller.js';
 import { addBlocker, resolveBlocker, nudgeBlocker } from '../controllers/blockers.controller.js';
+import { addItems, updateItem, deleteItem } from '../controllers/checklist.controller.js';
 
 const router = Router();
 
@@ -22,5 +23,9 @@ router.get('/:id/activity', listTaskActivity);
 router.post('/:id/blockers', addBlocker);
 router.post('/:id/blockers/:blockerId/resolve', resolveBlocker);
 router.post('/:id/blockers/:blockerId/nudge', nudgeBlocker);
+
+router.post('/:id/checklist', addItems);
+router.patch('/:id/checklist/:itemId', updateItem);
+router.delete('/:id/checklist/:itemId', deleteItem);
 
 export default router;

@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { Bug, CalendarDays, GitCommit, MessageSquare, Square, Zap } from "lucide-react";
 import { dueInfo } from "../../lib/dates";
 import WaitingOnBadge from "../blockers/WaitingOnBadge";
+import ChecklistProgress from "../checklist/ChecklistProgress";
 
 const TYPE_ICON = {
     TASK: { icon: Square, cls: "text-green-600 dark:text-green-400" },
@@ -54,6 +55,7 @@ export default function BoardCard({ task, overlay = false, draggable = true }) {
                         <CalendarDays className="size-3.5" /> {due.label}
                     </span>
                 )}
+                <ChecklistProgress task={task} />
                 {task.assignee && (
                     <img
                         src={task.assignee.image}

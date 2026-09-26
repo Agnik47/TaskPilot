@@ -11,11 +11,16 @@ export function isWaitingOn(dbUserId, task) {
   return !!task.blockers?.some((b) => b.waitingOnId === dbUserId && !b.resolvedAt);
 }
 
+// Owns a checklist item on the task. Needs `task.checklist` loaded.
+export function ownsChecklistItem(dbUserId, task) {
+  return !!task.checklist?.some((item) => item.assigneeId === dbUserId);
+}
+
 // Employees only ever see/manage tasks they created or are assigned to, plus
-// tasks that are waiting on them.
+// tasks that are waiting on them or where they own a checklist item.
 export function isTaskVisibleTo(dbUserId, orgRole, task) {
   if (isOwner(orgRole)) return true;
-  return task.creatorId === dbUserId || task.assigneeId === dbUserId || isWaitingOn(dbUserId, task);
+  return task.creatorId === dbUserId || task.assigneeId === dbUserId || isWaitingOn(dbUserId, task) || ownsChecklistItem(dbUserId, task);
 }
 
 export function filterTasksForRole(dbUserId, orgRole, tasks) {
@@ -46,6 +51,12 @@ export function canSetAssignee(orgRole, nextAssigneeId, dbUserId) {
 // Only the workspace owner can delete tasks — not even the task's creator.
 export function canDeleteTask(orgRole) {
   return isOwner(orgRole);
+}
+
+// A checklist item can be ticked off by anyone who can edit the task, or by
+// the item's owner (who can't change anything else).
+export function canToggleChecklistItem(dbUserId, orgRole, task, item) {
+  return canEditTask(dbUserId, orgRole, task) || item.assigneeId === dbUserId;
 }
 
 // A blocker can be resolved by the person it waits on, or by anyone who can

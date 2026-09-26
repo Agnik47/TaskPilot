@@ -10,12 +10,14 @@ import useTaskChannel from "../hooks/useTaskChannel";
 import MentionInput from "../components/MentionInput";
 import { parseMentions, toMentionMarkup } from "../lib/mentions";
 import { sfx } from "../lib/sound";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import CellSelect from "../components/sheet/CellSelect";
 import ReviewBanner from "../components/review/ReviewBanner";
 import BlockerPanel from "../components/blockers/BlockerPanel";
+import Checklist from "../components/checklist/Checklist";
+import { checklistReceived } from "../features/workspaceSlice";
 import { STATUS_META, statusOptionsFor } from "../lib/taskWorkflow";
 
 const TaskDetails = () => {
@@ -38,6 +40,7 @@ const TaskDetails = () => {
     const { isOwner } = useOrgRole();
     const settings = useSelector((state) => state.workspace.settings);
     const { setStatus } = useTaskActions();
+    const dispatch = useDispatch();
 
     const fetchComments = async () => {
         try {
@@ -89,6 +92,7 @@ const TaskDetails = () => {
     const { connected, viewers, typingUsers, notifyTyping, stopTyping } = useTaskChannel(task ? taskId : null, {
         onComment: receiveComment,
         onActivity: (item) => setActivity((prev) => (prev.some((a) => a.id === item.id) ? prev : [item, ...prev])),
+        onChecklist: (checklist) => dispatch(checklistReceived({ taskId, checklist })),
         onReconnect: () => {
             fetchComments();
             fetchActivity();
@@ -304,6 +308,10 @@ const TaskDetails = () => {
                     {task.description && (
                         <p className="text-sm text-gray-600 dark:text-zinc-400 leading-relaxed mb-4">{task.description}</p>
                     )}
+
+                    <div className="mb-3 empty:hidden">
+                        <Checklist task={task} me={user?.id} canEdit={canEdit} />
+                    </div>
 
                     <hr className="border-zinc-200 dark:border-zinc-700 my-3" />
 

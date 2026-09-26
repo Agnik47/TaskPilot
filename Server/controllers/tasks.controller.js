@@ -5,6 +5,7 @@ import { planStatusChange, describeStatusEvent } from '../services/taskWorkflow.
 import { getWorkspaceSettings } from '../services/workspaceSettings.service.js';
 import { emitToTask } from '../realtime.js';
 import { openBlockersInclude } from '../services/blockers.service.js';
+import { checklistInclude } from '../services/taskAccess.service.js';
 import {
   isTaskVisibleTo,
   filterTasksForRole,
@@ -23,6 +24,7 @@ export const taskInclude = {
   creator: true,
   project: { select: { id: true, name: true, workspaceId: true } },
   blockers: openBlockersInclude,
+  checklist: checklistInclude,
 };
 
 // Due dates are optional: empty -> null, garbage -> undefined (invalid).
@@ -122,7 +124,7 @@ export async function createTask(req, res, next) {
     ]);
 
     // Same shape as `include: taskInclude`, assembled from data already in hand.
-    const task = { ...created, assignee, creator: req.dbUser, project, blockers: [] };
+    const task = { ...created, assignee, creator: req.dbUser, project, blockers: [], checklist: [] };
 
     logActivitiesInBackground([{
       workspaceId: req.workspaceId,
@@ -245,7 +247,7 @@ export async function updateTask(req, res, next) {
         : null,
     ]);
 
-    const task = { ...updated, assignee, creator: existing.creator, project: existing.project, blockers: unblocking ? [] : existing.blockers };
+    const task = { ...updated, assignee, creator: existing.creator, project: existing.project, blockers: unblocking ? [] : existing.blockers, checklist: existing.checklist };
 
     logActivitiesInBackground(
       activities.map((activity) => ({
@@ -307,7 +309,7 @@ export async function reviewTask(req, res, next) {
         : null,
     ]);
 
-    const task = { ...updated, assignee: existing.assignee, creator: existing.creator, project: existing.project, blockers: existing.blockers };
+    const task = { ...updated, assignee: existing.assignee, creator: existing.creator, project: existing.project, blockers: existing.blockers, checklist: existing.checklist };
     const effects = describeStatusEvent({ event: plan.event, task: existing, actor: req.dbUser, from: existing.status, to: plan.data.status, note: trimmedNote });
 
     if (comment) emitToTask(existing.id, 'comment:new', { ...comment, user: req.dbUser });
@@ -422,7 +424,7 @@ export async function bulkCreateTasks(req, res, next) {
 
     const usersById = new Map(users.map((u) => [u.id, u]));
     const projectRef = { id: project.id, name: project.name, workspaceId: project.workspaceId };
-    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: projectRef, blockers: [] }));
+    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: projectRef, blockers: [], checklist: [] }));
 
     logActivitiesInBackground(
       tasks.map((t) => ({

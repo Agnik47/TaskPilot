@@ -47,6 +47,7 @@ enum NotificationType {
   BLOCKER_ADDED // someone is waiting on you
   BLOCKER_NUDGE // ...and is reminding you
   BLOCKER_RESOLVED // what your task was waiting on is done
+  CHECKLIST_ASSIGNED // a checklist item on someone's task is yours
 }
 
 enum ActivityType {
@@ -63,6 +64,7 @@ enum ActivityType {
   CHANGES_REQUESTED
   BLOCKER_ADDED
   BLOCKER_RESOLVED
+  CHECKLIST_ITEM_COMPLETED
 }
 
 // Workspaces, membership, and roles are managed by Clerk Organizations.
@@ -86,6 +88,9 @@ model User {
   waitedOnBy        TaskBlocker[]   @relation("BlockerWaitingOn")
   blockersRaised    TaskBlocker[]   @relation("BlockerCreatedBy")
   blockersResolved  TaskBlocker[]   @relation("BlockerResolvedBy")
+  checklistAssigned ChecklistItem[] @relation("ChecklistAssignee")
+  checklistCreated  ChecklistItem[] @relation("ChecklistCreatedBy")
+  checklistDone     ChecklistItem[] @relation("ChecklistDoneBy")
 }
 
 model Project {
@@ -145,6 +150,7 @@ model Task {
   activities    Activity[]
   notifications Notification[]
   blockers      TaskBlocker[]
+  checklist     ChecklistItem[]
 
   @@index([workspaceId])
   @@index([projectId, position])
@@ -176,6 +182,33 @@ model TaskBlocker {
 
   @@index([taskId])
   @@index([waitingOnId, resolvedAt])
+}
+
+// Checklist / subtasks: steps inside a task. An item may have its own owner
+// (anyone in the organization, who can then see the task and tick the item
+// off) and due date, which makes it a lightweight subtask.
+model ChecklistItem {
+  id          String    @id @default(uuid())
+  workspaceId String
+  taskId      String
+  title       String
+  done        Boolean   @default(false)
+  doneAt      DateTime?
+  doneById    String?
+  assigneeId  String?
+  dueDate     DateTime?
+  position    Float     @default(0)
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  task      Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  assignee  User? @relation("ChecklistAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User  @relation("ChecklistCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  doneBy    User? @relation("ChecklistDoneBy", fields: [doneById], references: [id], onDelete: SetNull)
+
+  @@index([taskId, position])
+  @@index([assigneeId])
 }
 
 model Comment {

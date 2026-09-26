@@ -12,6 +12,7 @@ import { ConfirmDialog } from "./settings/SettingsUI";
 import { sortByPosition } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
 import WaitingOnBadge from "./blockers/WaitingOnBadge";
+import ChecklistProgress from "./checklist/ChecklistProgress";
 import CellSelect from "./sheet/CellSelect";
 import DateCell from "./sheet/DateCell";
 import {
@@ -582,6 +583,7 @@ export default function TaskSheet({ project }) {
                         <div className="flex items-center pl-1.5">
                             {typePicker(r.values, r.onChange, r.kind === "task" && r.disabled.type)}
                             {titleInput(r, "flex-1 min-w-0 h-10 pl-1.5 pr-3")}
+                            {r.kind === "task" && <ChecklistProgress task={r.task} className="mr-2" />}
                             {r.kind === "task" && <WaitingOnBadge task={r.task} className="mr-2 max-w-[50%]" />}
                         </div>
                     ) : field === "description" ? (
@@ -694,6 +696,7 @@ export default function TaskSheet({ project }) {
                         <div className={`flex-1 min-w-0 rounded-md focus-within:ring-2 focus-within:ring-blue-500 ${r.invalid?.title ? invalidRing : ""}`}>
                             {titleInput(r, "w-full h-9 px-2 text-[15px] font-medium")}
                         </div>
+                        {r.kind === "task" && <ChecklistProgress task={r.task} className="shrink-0" />}
                         <div className="flex items-center shrink-0">{rowActions(r)}</div>
                     </div>
                     {!r.blank && (

@@ -4,13 +4,14 @@ import { useSocket } from "../lib/socketContext";
 const TYPING_IDLE_MS = 2500; // stop "typing" after this long without keystrokes
 const TYPING_STALE_MS = 5000; // drop a remote typer if we stop hearing from them
 
-// Subscribes to one task's realtime room: new comments/activity, who's typing,
+// Subscribes to one task's realtime room: new comments/activity, checklist
+// changes, who's typing,
 // and who's viewing. Handlers are read through a ref so callers can pass
 // inline functions without resubscribing on every render.
-export default function useTaskChannel(taskId, { onComment, onActivity, onReconnect } = {}) {
+export default function useTaskChannel(taskId, { onComment, onActivity, onChecklist, onReconnect } = {}) {
     const socket = useSocket();
-    const handlers = useRef({ onComment, onActivity, onReconnect });
-    handlers.current = { onComment, onActivity, onReconnect };
+    const handlers = useRef({ onComment, onActivity, onChecklist, onReconnect });
+    handlers.current = { onComment, onActivity, onChecklist, onReconnect };
 
     const [connected, setConnected] = useState(false);
     const [viewers, setViewers] = useState([]);
@@ -35,6 +36,7 @@ export default function useTaskChannel(taskId, { onComment, onActivity, onReconn
         const onDisconnect = () => setConnected(false);
         const onCommentEvent = (comment) => comment.taskId === taskId && handlers.current.onComment?.(comment);
         const onActivityEvent = (item) => item.taskId === taskId && handlers.current.onActivity?.(item);
+        const onChecklistEvent = (p) => p.taskId === taskId && handlers.current.onChecklist?.(p.checklist);
         const onPresence = (p) => p.taskId === taskId && setViewers(p.viewers);
         const onTyping = ({ taskId: id, user, isTyping }) => {
             if (id !== taskId) return;
@@ -54,6 +56,7 @@ export default function useTaskChannel(taskId, { onComment, onActivity, onReconn
         socket.on("disconnect", onDisconnect);
         socket.on("comment:new", onCommentEvent);
         socket.on("activity:new", onActivityEvent);
+        socket.on("checklist:changed", onChecklistEvent);
         socket.on("presence", onPresence);
         socket.on("typing", onTyping);
         if (socket.connected) join();
@@ -64,6 +67,7 @@ export default function useTaskChannel(taskId, { onComment, onActivity, onReconn
             socket.off("disconnect", onDisconnect);
             socket.off("comment:new", onCommentEvent);
             socket.off("activity:new", onActivityEvent);
+            socket.off("checklist:changed", onChecklistEvent);
             socket.off("presence", onPresence);
             socket.off("typing", onTyping);
             staleTimers.forEach(clearTimeout);

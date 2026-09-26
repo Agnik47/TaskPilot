@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { formatDistanceToNow } from "date-fns";
-import { AtSign, BellIcon, BellRing, CheckCheck, CheckCircle2, Hourglass, RotateCcw, ShieldCheck, Unlock, UserPlus } from "lucide-react";
+import { AtSign, BellIcon, BellRing, CheckCheck, CheckCircle2, Hourglass, ListChecks, RotateCcw, ShieldCheck, Unlock, UserPlus } from "lucide-react";
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead, notificationHref } from "../features/notificationsSlice";
 
-const TYPE_ICON = { TASK_ASSIGNED: UserPlus, MENTION: AtSign, REVIEW_REQUESTED: ShieldCheck, TASK_APPROVED: CheckCircle2, CHANGES_REQUESTED: RotateCcw, BLOCKER_ADDED: Hourglass, BLOCKER_NUDGE: BellRing, BLOCKER_RESOLVED: Unlock };
+const TYPE_ICON = { TASK_ASSIGNED: UserPlus, MENTION: AtSign, REVIEW_REQUESTED: ShieldCheck, TASK_APPROVED: CheckCircle2, CHANGES_REQUESTED: RotateCcw, BLOCKER_ADDED: Hourglass, BLOCKER_NUDGE: BellRing, BLOCKER_RESOLVED: Unlock, CHECKLIST_ASSIGNED: ListChecks };
 
 export default function NotificationBell() {
     const { items, unreadCount, loaded } = useSelector((state) => state.notifications);

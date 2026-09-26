@@ -6,6 +6,7 @@ import useOrgRole from "../hooks/useOrgRole";
 import { GROUPS, groupTasks, selectTasks } from "../lib/myWork";
 import MyWorkRow from "../components/mywork/MyWorkRow";
 import WaitingOnYou from "../components/blockers/WaitingOnYou";
+import MyChecklistItems from "../components/checklist/MyChecklistItems";
 
 // One place for "what should I work on?": everything assigned to you across
 // all projects, grouped by urgency. Owners can switch to work they delegated.
@@ -123,6 +124,7 @@ export default function MyWork() {
             </div>
 
             {activeMode === "mine" && <WaitingOnYou />}
+            {activeMode === "mine" && <MyChecklistItems me={me} />}
 
             {/* Summary + filters */}
             <div className="flex flex-wrap items-center gap-2 mb-4">

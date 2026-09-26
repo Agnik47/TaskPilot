@@ -24,11 +24,12 @@ const PREF_FOR_TYPE = {
     BLOCKER_ADDED: "blockers",
     BLOCKER_NUDGE: "blockers",
     BLOCKER_RESOLVED: "blockers",
+    CHECKLIST_ASSIGNED: "taskAssigned",
 };
 
 // These mean a task changed somewhere else; refresh lists so it shows here.
 // (A new blocker also makes the task visible to the person being waited on.)
-const REFRESH_TYPES = new Set(["TASK_ASSIGNED", "REVIEW_REQUESTED", "TASK_APPROVED", "CHANGES_REQUESTED", "BLOCKER_ADDED", "BLOCKER_RESOLVED"]);
+const REFRESH_TYPES = new Set(["TASK_ASSIGNED", "REVIEW_REQUESTED", "TASK_APPROVED", "CHANGES_REQUESTED", "BLOCKER_ADDED", "BLOCKER_RESOLVED", "CHECKLIST_ASSIGNED"]);
 
 // App-wide: loads the inbox, receives live notifications, and alerts with a
 // toast + chime. Every notification lands in the bell regardless of settings;

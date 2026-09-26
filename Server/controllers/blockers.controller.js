@@ -1,11 +1,11 @@
 import prisma from '../config/prisma.js';
-import clerkClient from '../config/clerk.js';
 import { logActivitiesInBackground } from '../services/activity.service.js';
 import { notifyInBackground } from '../services/notifications.service.js';
 import { canEditTask, canResolveBlocker } from '../services/authorization.service.js';
 import { NUDGE_COOLDOWN_MS } from '../services/blockers.service.js';
 import { emitToTask } from '../realtime.js';
 import { taskInclude } from './tasks.controller.js';
+import { isOrgMember } from '../services/taskAccess.service.js';
 
 // "Waiting on someone": a task is blocked until a person (anyone in the
 // organization) does something. The task's people add blockers and can nudge;
@@ -17,11 +17,6 @@ const MAX_REASON = 500;
 const MAX_NOTE = 2000;
 
 const short = (text, n = 80) => (text.length > n ? `${text.slice(0, n)}…` : text);
-
-async function isOrgMember(organizationId, userId) {
-  const { data } = await clerkClient.organizations.getOrganizationMembershipList({ organizationId, limit: 500 });
-  return data.some((m) => m.publicUserData?.userId === userId);
-}
 
 async function loadTask(req) {
   const task = await prisma.task.findUnique({ where: { id: req.params.id }, include: taskInclude });

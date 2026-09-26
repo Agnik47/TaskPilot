@@ -11,6 +11,7 @@ import { statusOptionsFor } from "../lib/taskWorkflow";
 import { sortByPosition } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
 import WaitingOnBadge from "./blockers/WaitingOnBadge";
+import ChecklistProgress from "./checklist/ChecklistProgress";
 import { Bug, CalendarIcon, GitCommit, MessageSquare, Square, Trash, XIcon, Zap } from "lucide-react";
 
 const typeIcons = {
@@ -201,6 +202,7 @@ const ProjectTasks = ({ tasks }) => {
                                                 <td className="px-4 pl-0 py-2">
                                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                         <span>{task.title}</span>
+                                                        <ChecklistProgress task={task} />
                                                         <WaitingOnBadge task={task} />
                                                     </div>
                                                 </td>
@@ -267,6 +269,7 @@ const ProjectTasks = ({ tasks }) => {
                                         <div className="flex items-center gap-2">
                                             <span className="-ml-2">{handle}</span>
                                             <h3 className="text-zinc-900 dark:text-zinc-200 text-sm font-semibold mr-auto">{task.title}</h3>
+                                            <ChecklistProgress task={task} />
                                             <input type="checkbox" className="size-4 accent-zinc-600 dark:accent-zinc-500" onChange={() => selectedTasks.includes(task.id) ? setSelectedTasks(selectedTasks.filter((i) => i !== task.id)) : setSelectedTasks((prev) => [...prev, task.id])} checked={selectedTasks.includes(task.id)} />
                                         </div>
 

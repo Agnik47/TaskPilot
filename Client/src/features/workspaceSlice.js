@@ -127,6 +127,35 @@ export const nudgeBlocker = createAsyncThunk("workspace/nudgeBlocker", async ({ 
     }
 });
 
+// Checklist items (subtasks). Each returns the updated task.
+export const addChecklistItems = createAsyncThunk("workspace/addChecklistItems", async ({ taskId, ...body }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post(`/tasks/${taskId}/checklist`, body);
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
+// Optimistic: the change shows immediately and is rolled back on failure.
+export const updateChecklistItem = createAsyncThunk("workspace/updateChecklistItem", async ({ taskId, itemId, changes }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.patch(`/tasks/${taskId}/checklist/${itemId}`, changes);
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
+export const deleteChecklistItem = createAsyncThunk("workspace/deleteChecklistItem", async ({ taskId, itemId }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.delete(`/tasks/${taskId}/checklist/${itemId}`);
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
 export const deleteTask = createAsyncThunk("workspace/deleteTask", async (taskIds) => {
     await Promise.all(taskIds.map((id) => api.delete(`/tasks/${id}`)));
     return taskIds;
@@ -161,6 +190,31 @@ function rollback(state, requestId) {
     }
 }
 
+function findTask(state, taskId) {
+    for (const project of state.projects) {
+        const task = project.tasks?.find((t) => t.id === taskId);
+        if (task) return task;
+    }
+    return null;
+}
+
+// Pre-change checklists for optimistic item edits, keyed by request id.
+const checklistSnapshots = new Map();
+
+function editChecklistOptimistically(state, action, edit) {
+    const task = findTask(state, action.meta.arg.taskId);
+    if (!task?.checklist) return;
+    checklistSnapshots.set(action.meta.requestId, task.checklist.map((i) => ({ ...i })));
+    task.checklist = edit(task.checklist);
+}
+
+function rollbackChecklist(state, action) {
+    const snapshot = checklistSnapshots.get(action.meta.requestId);
+    checklistSnapshots.delete(action.meta.requestId);
+    const task = findTask(state, action.meta.arg.taskId);
+    if (task && snapshot) task.checklist = snapshot;
+}
+
 function replaceTask(state, task) {
     state.projects = state.projects.map((p) =>
         p.id === task.projectId ? { ...p, tasks: p.tasks.map((t) => (t.id === task.id ? task : t)) } : p
@@ -172,6 +226,11 @@ const workspaceSlice = createSlice({
     initialState,
     reducers: {
         resetWorkspace: () => initialState,
+        // Live update from someone else viewing the same task.
+        checklistReceived: (state, action) => {
+            const task = findTask(state, action.payload.taskId);
+            if (task) task.checklist = action.payload.checklist;
+        },
     },
     extraReducers: (builder) => {
         builder
@@ -248,6 +307,24 @@ const workspaceSlice = createSlice({
             .addCase(addBlocker.fulfilled, (state, action) => replaceTask(state, action.payload))
             .addCase(resolveBlocker.fulfilled, (state, action) => replaceTask(state, action.payload))
             .addCase(nudgeBlocker.fulfilled, (state, action) => replaceTask(state, action.payload))
+            .addCase(addChecklistItems.fulfilled, (state, action) => replaceTask(state, action.payload))
+            .addCase(updateChecklistItem.pending, (state, action) => {
+                const { itemId, changes } = action.meta.arg;
+                editChecklistOptimistically(state, action, (list) => list.map((i) => (i.id === itemId ? { ...i, ...changes } : i)));
+            })
+            .addCase(updateChecklistItem.rejected, rollbackChecklist)
+            .addCase(updateChecklistItem.fulfilled, (state, action) => {
+                checklistSnapshots.delete(action.meta.requestId);
+                replaceTask(state, action.payload);
+            })
+            .addCase(deleteChecklistItem.pending, (state, action) => {
+                editChecklistOptimistically(state, action, (list) => list.filter((i) => i.id !== action.meta.arg.itemId));
+            })
+            .addCase(deleteChecklistItem.rejected, rollbackChecklist)
+            .addCase(deleteChecklistItem.fulfilled, (state, action) => {
+                checklistSnapshots.delete(action.meta.requestId);
+                replaceTask(state, action.payload);
+            })
             .addCase(deleteTask.fulfilled, (state, action) => {
                 const ids = action.payload;
                 state.projects = state.projects.map((p) => ({
@@ -258,5 +335,5 @@ const workspaceSlice = createSlice({
     },
 });
 
-export const { resetWorkspace } = workspaceSlice.actions;
+export const { resetWorkspace, checklistReceived } = workspaceSlice.actions;
 export default workspaceSlice.reducer;

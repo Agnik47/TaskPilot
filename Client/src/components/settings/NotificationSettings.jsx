@@ -9,7 +9,7 @@ import { SectionHeader, SettingsCard, Toggle, Badge, primaryButtonClass, seconda
 // Personal preferences, stored on the Clerk user (unsafeMetadata is the
 // user-writable bucket) so they follow the person across workspaces/devices.
 const EVENTS = [
-    { key: "taskAssigned", label: "Task assigned to me", help: "Someone gives you a new task." },
+    { key: "taskAssigned", label: "Task assigned to me", help: "Someone gives you a new task or a checklist item." },
     { key: "taskReassigned", label: "Task reassigned", help: "A task you own is moved to someone else, or to you." },
     { key: "dueSoon", label: "Due date approaching", help: "A task you own is due within the next day." },
     { key: "overdue", label: "Task overdue", help: "A task you own has passed its due date." },

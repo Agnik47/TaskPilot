@@ -1,6 +1,6 @@
 import prisma from '../config/prisma.js';
 import { isOwner, isTaskVisibleTo } from '../services/authorization.service.js';
-import { openBlockersAccessSelect } from '../services/blockers.service.js';
+import { taskAccessSelect } from '../services/taskAccess.service.js';
 
 export async function listTaskActivity(req, res, next) {
   try {
@@ -9,7 +9,7 @@ export async function listTaskActivity(req, res, next) {
     const [task, activity] = await Promise.all([
       prisma.task.findUnique({
         where: { id: req.params.id },
-        select: { id: true, workspaceId: true, creatorId: true, assigneeId: true, blockers: openBlockersAccessSelect },
+        select: { id: true, workspaceId: true, creatorId: true, assigneeId: true, ...taskAccessSelect },
       }),
       prisma.activity.findMany({
         where: { taskId: req.params.id },
