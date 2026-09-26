@@ -9,7 +9,7 @@ export const DEFAULT_SETTINGS = {
   defaultTaskPriority: 'MEDIUM',
   defaultTaskType: 'TASK',
   weekStartsOn: 0, // 0 = Sunday, 1 = Monday
-  defaultTaskView: 'table', // 'table' | 'sheet' — how a project's tasks open
+  defaultTaskView: 'table', // 'table' | 'board' | 'sheet' — how a project's tasks open
   requireApproval: true, // tasks assigned by someone else need an owner to approve completion
 };
 

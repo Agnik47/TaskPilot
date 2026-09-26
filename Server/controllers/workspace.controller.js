@@ -8,7 +8,7 @@ import { getWorkspaceSettings, saveWorkspaceSettings } from '../services/workspa
 const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
 const WEEK_STARTS = [0, 1];
-const TASK_VIEWS = ['table', 'sheet'];
+const TASK_VIEWS = ['table', 'board', 'sheet'];
 
 export async function getSettings(req, res, next) {
   try {

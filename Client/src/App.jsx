@@ -8,6 +8,7 @@ import Team from "./pages/Team";
 import ProjectDetails from "./pages/ProjectDetails";
 import TaskDetails from "./pages/TaskDetails";
 import Settings from "./pages/Settings";
+import MyWork from "./pages/MyWork";
 
 // react-hot-toast styles toasts inline (white), so dark mode needs explicit colors.
 const toastStyles = {
@@ -24,6 +25,7 @@ const App = () => {
             <Routes>
                 <Route path="/" element={<Layout />}>
                     <Route index element={<Dashboard />} />
+                    <Route path="my-work" element={<MyWork />} />
                     <Route path="team" element={<Team />} />
                     <Route path="projects" element={<Projects />} />
                     <Route path="projectsDetail" element={<ProjectDetails />} />

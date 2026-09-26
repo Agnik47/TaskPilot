@@ -88,9 +88,9 @@ export default function PreferencesSettings() {
                     title="Task view"
                     description="How a project's tasks open for everyone. Each person can still switch views; their choice is remembered on their device."
                 >
-                    <FieldRow label="Default view" help="Sheet lets people add and assign many tasks in a grid, like Excel.">
+                    <FieldRow label="Default view" help="Board shows tasks as cards in status columns. Sheet lets people add and assign many tasks in a grid, like Excel.">
                         <div className="inline-flex rounded-md border border-zinc-300 dark:border-zinc-700 overflow-hidden">
-                            {[{ value: "table", label: "Table" }, { value: "sheet", label: "Sheet" }].map((o) => (
+                            {[{ value: "table", label: "Table" }, { value: "board", label: "Board" }, { value: "sheet", label: "Sheet" }].map((o) => (
                                 <button
                                     key={o.value}
                                     type="button"

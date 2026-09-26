@@ -1,20 +1,21 @@
 import { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeftIcon, PlusIcon, SettingsIcon, BarChart3Icon, CalendarIcon, FileStackIcon, ZapIcon, Rows3Icon, Grid3x3Icon } from "lucide-react";
+import { ArrowLeftIcon, PlusIcon, SettingsIcon, BarChart3Icon, CalendarIcon, FileStackIcon, ZapIcon, Rows3Icon, Grid3x3Icon, KanbanSquareIcon } from "lucide-react";
 import ProjectAnalytics from "../components/ProjectAnalytics";
 import ProjectSettings from "../components/ProjectSettings";
 import CreateTaskDialog from "../components/CreateTaskDialog";
 import ProjectCalendar from "../components/ProjectCalendar";
 import ProjectTasks from "../components/ProjectTasks";
 import TaskSheet from "../components/TaskSheet";
+import TaskBoard from "../components/board/TaskBoard";
 
 // Each person's last-used task view, per device (falls back to the workspace default).
 const VIEW_KEY = "taskView";
 const readSavedView = () => {
     try {
         const v = localStorage.getItem(VIEW_KEY);
-        return v === "table" || v === "sheet" ? v : null;
+        return v === "table" || v === "sheet" || v === "board" ? v : null;
     } catch {
         return null;
     }
@@ -139,11 +140,14 @@ export default function ProjectDetail() {
                                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
                                     {taskView === "sheet"
                                         ? "Edit cells directly, type in the last row to add tasks, or paste rows from Excel."
-                                        : "Click a task to open it, or use New Task to add one."}
+                                        : taskView === "board"
+                                            ? "Drag cards between columns to update their status, or within a column to reorder."
+                                            : "Click a task to open it, or use New Task to add one."}
                                 </p>
                                 <div role="tablist" aria-label="Task view" className="inline-flex p-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/80">
                                     {[
                                         { key: "table", label: "Table", icon: Rows3Icon },
+                                        { key: "board", label: "Board", icon: KanbanSquareIcon },
                                         { key: "sheet", label: "Sheet", icon: Grid3x3Icon },
                                     ].map((v) => (
                                         <button
@@ -160,7 +164,7 @@ export default function ProjectDetail() {
                                 </div>
                             </div>
                             <div key={taskView} className="motion-rise">
-                                {taskView === "sheet" ? <TaskSheet project={project} /> : <div className="dark:bg-zinc-900/40 rounded"><ProjectTasks tasks={tasks} /></div>}
+                                {taskView === "sheet" ? <TaskSheet project={project} /> : taskView === "board" ? <TaskBoard project={project} /> : <div className="dark:bg-zinc-900/40 rounded"><ProjectTasks tasks={tasks} /></div>}
                             </div>
                         </div>
                     )}

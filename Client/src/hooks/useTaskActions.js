@@ -16,17 +16,19 @@ export default function useTaskActions() {
     const settings = useSelector((state) => state.workspace.settings);
 
     // Choosing "Blocked" asks who/what it's waiting on (the dialog can still
-    // just mark it Blocked); pass { ask: false } to skip that.
-    const setStatus = async (task, status, { ask = true } = {}) => {
-        if (status === task.status) return true;
+    // just mark it Blocked); pass { ask: false } to skip that. `position`
+    // (optional) also places the task, e.g. where it was dropped on the board.
+    const setStatus = async (task, status, { ask = true, position } = {}) => {
+        if (status === task.status) return position === undefined ? true : savePosition(task.id, position);
         if (status === "BLOCKED" && ask) {
             requestBlockerDialog(task, { fromStatusPicker: true });
             return true;
         }
         const clearing = openBlockers(task);
-        const optimistic = { status: expectedStatus(task, status, { isOwner, settings }) };
+        const placed = position === undefined || position === null ? {} : { position };
+        const optimistic = { status: expectedStatus(task, status, { isOwner, settings }), ...placed };
         try {
-            const updated = await dispatch(updateTask({ id: task.id, status, optimistic })).unwrap();
+            const updated = await dispatch(updateTask({ id: task.id, status, ...placed, optimistic })).unwrap();
             if (updated.status === "IN_REVIEW" && task.status !== "IN_REVIEW") {
                 toast.success(`Sent to ${task.creator?.name || "the owner"} for approval`);
             } else if (status !== "BLOCKED" && clearing.length) {
@@ -58,14 +60,21 @@ export default function useTaskActions() {
         }
         const position = positionForMove(list, activeId, overId);
         if (position === null) return;
+        await savePosition(activeId, position);
+    };
+
+    async function savePosition(id, position) {
+        if (position === null) return false;
         try {
-            const saved = await dispatch(updateTask({ id: activeId, position })).unwrap();
+            const saved = await dispatch(updateTask({ id, position })).unwrap();
             // A server without reordering support answers 200 but ignores the position.
             if (saved.position !== position) toast.error("Couldn't save the new order. The server may need updating.");
+            return true;
         } catch (error) {
             toast.error(error?.message || "Couldn't move the task");
+            return false;
         }
-    };
+    }
 
     // ---- blockers ("waiting on someone") ----
     // Each resolves to the updated task, or null on failure (already toasted).
@@ -98,6 +107,7 @@ export default function useTaskActions() {
     return {
         setStatus,
         move,
+        savePosition,
         addWaitingOn,
         resolve,
         nudge,

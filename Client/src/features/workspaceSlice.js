@@ -7,7 +7,7 @@ export const DEFAULT_WORKSPACE_SETTINGS = {
     defaultTaskPriority: "MEDIUM",
     defaultTaskType: "TASK",
     weekStartsOn: 0,
-    defaultTaskView: "table", // "table" | "sheet"
+    defaultTaskView: "table", // "table" | "board" | "sheet"
     requireApproval: true, // assigned tasks need an owner's approval to be Done
 };
 

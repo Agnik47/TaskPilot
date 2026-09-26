@@ -33,6 +33,21 @@ export function statusOptionsFor(task, { isOwner, settings }) {
         }));
 }
 
+// Board columns, in workflow order.
+export const BOARD_COLUMNS = ["TODO", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "DONE"];
+
+// The status to request when a task is dropped on a board column, or null if
+// it can't go there. "In Review" can't be chosen directly: for work that needs
+// sign-off, dropping there means "I'm done, please review" (a Done request).
+export function boardTargetStatus(task, column, { isOwner, settings }) {
+    if (column === task.status) return column;
+    const approval = !isOwner && needsApproval(task, settings);
+    if (approval && task.status === "DONE") return null; // approved: only an owner can reopen
+    if (approval && task.status === "IN_REVIEW" && column === "DONE") return null; // only an owner approves
+    if (column === "IN_REVIEW") return approval ? "DONE" : null;
+    return column;
+}
+
 // What the server will turn a requested status into (for optimistic UI).
 export function expectedStatus(task, requested, { isOwner, settings }) {
     if (requested === "DONE" && !isOwner && needsApproval(task, settings)) return "IN_REVIEW";

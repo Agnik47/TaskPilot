@@ -84,6 +84,9 @@ function MyTasksSidebar() {
                                 </Link>
                             ))
                         )}
+                        <Link to="/my-work" className="block px-3 py-2 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                            Open My Work →
+                        </Link>
                     </div>
                 </div>
             )}
