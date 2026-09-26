@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { useUser } from '@clerk/clerk-react'
 import StatsGrid from '../components/StatsGrid'
 import ReviewQueue from '../components/review/ReviewQueue'
+import WaitingOnYou from '../components/blockers/WaitingOnYou'
 import ProjectOverview from '../components/ProjectOverview'
 import RecentActivity from '../components/RecentActivity'
 import TasksSummary from '../components/TasksSummary'
@@ -34,6 +35,8 @@ const Dashboard = () => {
             </div>
 
             <StatsGrid />
+
+            <WaitingOnYou />
 
             <ReviewQueue />
 

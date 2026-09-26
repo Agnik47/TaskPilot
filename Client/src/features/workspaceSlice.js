@@ -99,6 +99,34 @@ export const reviewTask = createAsyncThunk("workspace/reviewTask", async ({ id, 
     }
 });
 
+// Blockers ("waiting on someone"). Each returns the updated task.
+export const addBlocker = createAsyncThunk("workspace/addBlocker", async ({ taskId, waitingOnId, reason }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post(`/tasks/${taskId}/blockers`, { waitingOnId, reason });
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
+export const resolveBlocker = createAsyncThunk("workspace/resolveBlocker", async ({ taskId, blockerId, note }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post(`/tasks/${taskId}/blockers/${blockerId}/resolve`, { note });
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
+export const nudgeBlocker = createAsyncThunk("workspace/nudgeBlocker", async ({ taskId, blockerId }, { rejectWithValue }) => {
+    try {
+        const { data } = await api.post(`/tasks/${taskId}/blockers/${blockerId}/nudge`);
+        return data;
+    } catch (err) {
+        return serverError(err, rejectWithValue);
+    }
+});
+
 export const deleteTask = createAsyncThunk("workspace/deleteTask", async (taskIds) => {
     await Promise.all(taskIds.map((id) => api.delete(`/tasks/${id}`)));
     return taskIds;
@@ -217,6 +245,9 @@ const workspaceSlice = createSlice({
                 taskSnapshots.delete(action.meta.requestId);
                 replaceTask(state, action.payload);
             })
+            .addCase(addBlocker.fulfilled, (state, action) => replaceTask(state, action.payload))
+            .addCase(resolveBlocker.fulfilled, (state, action) => replaceTask(state, action.payload))
+            .addCase(nudgeBlocker.fulfilled, (state, action) => replaceTask(state, action.payload))
             .addCase(deleteTask.fulfilled, (state, action) => {
                 const ids = action.payload;
                 state.projects = state.projects.map((p) => ({

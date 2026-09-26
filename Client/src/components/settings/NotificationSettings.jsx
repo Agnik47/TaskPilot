@@ -17,6 +17,7 @@ const EVENTS = [
     { key: "mentions", label: "Mentions", help: "Someone mentions you in a task or comment." },
     { key: "taskCompleted", label: "Work ready for review", help: "Someone finishes a task you assigned, and it needs your approval." },
     { key: "reviewResults", label: "Review results", help: "Your finished work is approved, or sent back with changes." },
+    { key: "blockers", label: "Blockers", help: "Someone is waiting on you (or reminds you), or a task you're waiting on is unblocked." },
 ];
 
 const PREF_KEYS = [...EVENTS.map((e) => e.key), "sound", "uiSounds"];

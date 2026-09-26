@@ -21,10 +21,14 @@ const PREF_FOR_TYPE = {
     REVIEW_REQUESTED: "taskCompleted",
     TASK_APPROVED: "reviewResults",
     CHANGES_REQUESTED: "reviewResults",
+    BLOCKER_ADDED: "blockers",
+    BLOCKER_NUDGE: "blockers",
+    BLOCKER_RESOLVED: "blockers",
 };
 
 // These mean a task changed somewhere else; refresh lists so it shows here.
-const REFRESH_TYPES = new Set(["TASK_ASSIGNED", "REVIEW_REQUESTED", "TASK_APPROVED", "CHANGES_REQUESTED"]);
+// (A new blocker also makes the task visible to the person being waited on.)
+const REFRESH_TYPES = new Set(["TASK_ASSIGNED", "REVIEW_REQUESTED", "TASK_APPROVED", "CHANGES_REQUESTED", "BLOCKER_ADDED", "BLOCKER_RESOLVED"]);
 
 // App-wide: loads the inbox, receives live notifications, and alerts with a
 // toast + chime. Every notification lands in the bell regardless of settings;

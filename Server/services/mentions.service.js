@@ -1,7 +1,7 @@
 // Mentions are stored inline in comment content as `@[Display Name](userId)`.
-// Only people involved in the task (its creator and assignee) can be
-// mentioned — they're the only non-owners who can see it — and nobody
-// mentions themselves.
+// Only people involved in the task (its creator, assignee, and anyone it's
+// waiting on) can be mentioned — they're the only non-owners who can see it —
+// and nobody mentions themselves.
 
 const MENTION_RE = /@\[([^\]\n]{1,100})\]\(([A-Za-z0-9_-]{1,64})\)/g;
 
@@ -11,7 +11,7 @@ const MENTION_RE = /@\[([^\]\n]{1,100})\]\(([A-Za-z0-9_-]{1,64})\)/g;
 // the de-duplicated users that were mentioned.
 export function sanitizeMentions(content, { task, authorId }) {
   const allowed = new Map();
-  for (const user of [task.creator, task.assignee]) {
+  for (const user of [task.creator, task.assignee, ...(task.blockers || []).map((b) => b.waitingOn)]) {
     if (user && user.id !== authorId) allowed.set(user.id, user);
   }
 

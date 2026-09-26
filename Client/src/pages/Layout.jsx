@@ -12,6 +12,7 @@ import WorkspaceGate from '../components/WorkspaceGate'
 import SocketProvider from '../components/SocketProvider'
 import NotificationListener from '../components/NotificationListener'
 import InteractionSounds from '../components/InteractionSounds'
+import BlockerDialogHost from '../components/blockers/BlockerDialogHost'
 
 
 const Layout = () => {
@@ -67,6 +68,7 @@ const Layout = () => {
         <SocketProvider>
             <ApiTokenSync />
             <NotificationListener />
+            <BlockerDialogHost />
             <InteractionSounds />
             <div className="flex bg-white dark:bg-zinc-950 text-gray-900 dark:text-slate-100">
                 <Sidebar isSidebarOpen={isSidebarOpen} setIsSidebarOpen={setIsSidebarOpen} />

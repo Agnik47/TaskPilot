@@ -15,6 +15,7 @@ import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import CellSelect from "../components/sheet/CellSelect";
 import ReviewBanner from "../components/review/ReviewBanner";
+import BlockerPanel from "../components/blockers/BlockerPanel";
 import { STATUS_META, statusOptionsFor } from "../lib/taskWorkflow";
 
 const TaskDetails = () => {
@@ -103,10 +104,15 @@ const TaskDetails = () => {
     // People who can be @mentioned: those involved in the task (excluding you).
     // Mirrors the server rule in Server/services/mentions.service.js.
     const mentionables = [];
-    for (const [person, label] of [[task?.assignee, "Assignee"], [task?.creator, "Creator"]]) {
+    const involved = [
+        [task?.assignee, "Assignee"],
+        [task?.creator, "Creator"],
+        ...(task?.blockers || []).map((b) => [b.waitingOn, "Waiting on them"]),
+    ];
+    for (const [person, label] of involved) {
         if (!person || person.id === user?.id) continue;
         const existing = mentionables.find((m) => m.id === person.id);
-        if (existing) existing.label = "Assignee · Creator";
+        if (existing) existing.label = `${existing.label} · ${label}`;
         else mentionables.push({ id: person.id, name: person.name, image: person.image, label });
     }
 
@@ -154,6 +160,9 @@ const TaskDetails = () => {
     const typingText = typingUsers.length === 1
         ? `${typingUsers[0].name} is typing…`
         : typingUsers.length > 1 ? `${typingUsers.length} people are typing…` : "";
+
+    // Being waited on lets you view and discuss a task, not edit it.
+    const canEdit = !!task && (isOwner || task.creatorId === user?.id || task.assigneeId === user?.id);
 
     if (loading) return <div className="text-gray-500 dark:text-zinc-400 px-4 py-6">Loading task details...</div>;
     if (!task) return <div className="text-red-500 px-4 py-6">Task not found.</div>;
@@ -255,7 +264,7 @@ const TaskDetails = () => {
                     <div className="mb-3">
                         <h1 className="text-lg font-medium text-gray-900 dark:text-zinc-100">{task.title}</h1>
                         <div className="flex flex-wrap gap-2 mt-2">
-                            {isOwner || task.creatorId === user?.id || task.assigneeId === user?.id ? (
+                            {canEdit ? (
                                 <CellSelect
                                     label="Status"
                                     value={task.status}
@@ -286,6 +295,10 @@ const TaskDetails = () => {
 
                     <div className="mb-3 empty:hidden">
                         <ReviewBanner task={task} />
+                    </div>
+
+                    <div className="mb-3 empty:hidden">
+                        <BlockerPanel task={task} me={user?.id} canEdit={canEdit} />
                     </div>
 
                     {task.description && (

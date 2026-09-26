@@ -11,6 +11,7 @@ import { bulkCreateTasks, deleteTask, updateTask } from "../features/workspaceSl
 import { ConfirmDialog } from "./settings/SettingsUI";
 import { sortByPosition } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
+import WaitingOnBadge from "./blockers/WaitingOnBadge";
 import CellSelect from "./sheet/CellSelect";
 import DateCell from "./sheet/DateCell";
 import {
@@ -581,6 +582,7 @@ export default function TaskSheet({ project }) {
                         <div className="flex items-center pl-1.5">
                             {typePicker(r.values, r.onChange, r.kind === "task" && r.disabled.type)}
                             {titleInput(r, "flex-1 min-w-0 h-10 pl-1.5 pr-3")}
+                            {r.kind === "task" && <WaitingOnBadge task={r.task} className="mr-2 max-w-[50%]" />}
                         </div>
                     ) : field === "description" ? (
                         descriptionInput(r, "w-full h-10 px-3")
@@ -696,6 +698,7 @@ export default function TaskSheet({ project }) {
                     </div>
                     {!r.blank && (
                         <>
+                            {r.kind === "task" && <WaitingOnBadge task={r.task} className="mt-1.5 ml-1" />}
                             <div className="flex flex-wrap items-center gap-1.5 mt-2 pl-1">
                                 {renderField("assigneeId", { ...r, variant: "chip", currentAssignee: r.kind === "task" ? r.task.assignee : null })}
                                 {renderField("status", { ...r, variant: "chip" })}

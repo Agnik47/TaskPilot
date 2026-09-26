@@ -16,8 +16,10 @@ export function positionForMove(list, activeId, overId) {
     const rest = list.filter((t) => t.id !== activeId);
     const before = rest[to - 1];
     const after = rest[to];
-    if (before && after) return (before.position + after.position) / 2;
-    if (before) return before.position + 1;
-    if (after) return after.position - 1;
-    return null;
+    let position = null;
+    if (before && after) position = (before.position + after.position) / 2;
+    else if (before) position = before.position + 1;
+    else if (after) position = after.position - 1;
+    // Tasks loaded without positions (e.g. from an older server) can't be placed.
+    return Number.isFinite(position) ? position : null;
 }

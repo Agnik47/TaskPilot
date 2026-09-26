@@ -44,6 +44,9 @@ enum NotificationType {
   REVIEW_REQUESTED
   TASK_APPROVED
   CHANGES_REQUESTED
+  BLOCKER_ADDED // someone is waiting on you
+  BLOCKER_NUDGE // ...and is reminding you
+  BLOCKER_RESOLVED // what your task was waiting on is done
 }
 
 enum ActivityType {
@@ -58,6 +61,8 @@ enum ActivityType {
   SUBMITTED_FOR_REVIEW
   TASK_APPROVED
   CHANGES_REQUESTED
+  BLOCKER_ADDED
+  BLOCKER_RESOLVED
 }
 
 // Workspaces, membership, and roles are managed by Clerk Organizations.
@@ -78,6 +83,9 @@ model User {
   activities        Activity[]      @relation("ActivityActor")
   notifications     Notification[]  @relation("NotificationRecipient")
   notificationsSent Notification[]  @relation("NotificationActor")
+  waitedOnBy        TaskBlocker[]   @relation("BlockerWaitingOn")
+  blockersRaised    TaskBlocker[]   @relation("BlockerCreatedBy")
+  blockersResolved  TaskBlocker[]   @relation("BlockerResolvedBy")
 }
 
 model Project {
@@ -136,12 +144,38 @@ model Task {
   comments      Comment[]
   activities    Activity[]
   notifications Notification[]
+  blockers      TaskBlocker[]
 
   @@index([workspaceId])
   @@index([projectId, position])
   @@index([assigneeId])
   @@index([workspaceId, status])
   @@index([creatorId])
+}
+
+// A task is waiting on someone (anyone in the organization) to do something.
+// Open while resolvedAt is null; a task can wait on several people at once.
+// The person waited on can see the task, discuss it, and mark it unblocked.
+model TaskBlocker {
+  id             String    @id @default(uuid())
+  workspaceId    String
+  taskId         String
+  waitingOnId    String // who can unblock it
+  reason         String
+  createdById    String
+  createdAt      DateTime  @default(now())
+  lastNudgedAt   DateTime?
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolutionNote String?
+
+  task       Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  waitingOn  User  @relation("BlockerWaitingOn", fields: [waitingOnId], references: [id], onDelete: Cascade)
+  createdBy  User  @relation("BlockerCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  resolvedBy User? @relation("BlockerResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([taskId])
+  @@index([waitingOnId, resolvedAt])
 }
 
 model Comment {

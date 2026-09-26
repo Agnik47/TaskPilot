@@ -3,6 +3,7 @@ import { listTasks, getTask, createTask, bulkCreateTasks, updateTask, reviewTask
 import requireRole from '../middleware/requireRole.js';
 import { listComments, createComment } from '../controllers/comments.controller.js';
 import { listTaskActivity } from '../controllers/activity.controller.js';
+import { addBlocker, resolveBlocker, nudgeBlocker } from '../controllers/blockers.controller.js';
 
 const router = Router();
 
@@ -17,5 +18,9 @@ router.delete('/:id', deleteTask);
 router.get('/:id/comments', listComments);
 router.post('/:id/comments', createComment);
 router.get('/:id/activity', listTaskActivity);
+
+router.post('/:id/blockers', addBlocker);
+router.post('/:id/blockers/:blockerId/resolve', resolveBlocker);
+router.post('/:id/blockers/:blockerId/nudge', nudgeBlocker);
 
 export default router;

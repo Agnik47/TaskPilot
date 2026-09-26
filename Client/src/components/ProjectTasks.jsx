@@ -3,12 +3,14 @@ import toast from "react-hot-toast";
 import { useDispatch, useSelector } from "react-redux";
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useUser } from "@clerk/clerk-react";
 import { deleteTask } from "../features/workspaceSlice";
 import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import { statusOptionsFor } from "../lib/taskWorkflow";
 import { sortByPosition } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
+import WaitingOnBadge from "./blockers/WaitingOnBadge";
 import { Bug, CalendarIcon, GitCommit, MessageSquare, Square, Trash, XIcon, Zap } from "lucide-react";
 
 const typeIcons = {
@@ -31,6 +33,9 @@ const ProjectTasks = ({ tasks }) => {
     const navigate = useNavigate();
     const [selectedTasks, setSelectedTasks] = useState([]);
     const { isOwner } = useOrgRole();
+    const { user } = useUser();
+    // People a task is only waiting on can see it but not change it.
+    const canEdit = (task) => isOwner || task.creatorId === user?.id || task.assigneeId === user?.id;
     const settings = useSelector((state) => state.workspace.settings);
     const { setStatus, move } = useTaskActions();
     const statusOptions = (task) =>
@@ -179,7 +184,9 @@ const ProjectTasks = ({ tasks }) => {
 
                                         return (
                                             <SortableItem
+                                        disabled={!canEdit(task)}
                                                 as="tr"
+                                                disabled={!canEdit(task)}
                                                 id={task.id}
                                                 key={task.id}
                                                 onClick={() => navigate(`/taskDetails?projectId=${task.projectId}&taskId=${task.id}`)}
@@ -191,7 +198,12 @@ const ProjectTasks = ({ tasks }) => {
                                                 <td onClick={e => e.stopPropagation()} className="pl-1 pr-1">
                                                     <input type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" onChange={() => selectedTasks.includes(task.id) ? setSelectedTasks(selectedTasks.filter((i) => i !== task.id)) : setSelectedTasks((prev) => [...prev, task.id])} checked={selectedTasks.includes(task.id)} />
                                                 </td>
-                                                <td className="px-4 pl-0 py-2">{task.title}</td>
+                                                <td className="px-4 pl-0 py-2">
+                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                        <span>{task.title}</span>
+                                                        <WaitingOnBadge task={task} />
+                                                    </div>
+                                                </td>
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-2">
                                                         {Icon && <Icon className={`size-4 ${color}`} />}
@@ -204,7 +216,7 @@ const ProjectTasks = ({ tasks }) => {
                                                     </span>
                                                 </td>
                                                 <td onClick={e => e.stopPropagation()} className="px-4 py-2">
-                                                    <select name="status" onChange={(e) => handleStatusChange(task.id, e.target.value)} value={task.status} className="group-hover:ring ring-zinc-100 dark:ring-zinc-700 outline-none px-2 pr-4 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200 cursor-pointer" >
+                                                    <select name="status" disabled={!canEdit(task)} onChange={(e) => handleStatusChange(task.id, e.target.value)} value={task.status} className="disabled:cursor-not-allowed disabled:opacity-70 group-hover:ring ring-zinc-100 dark:ring-zinc-700 outline-none px-2 pr-4 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200 cursor-pointer" >
                                                         {statusOptions(task)}
                                                     </select>
                                                 </td>
@@ -258,6 +270,8 @@ const ProjectTasks = ({ tasks }) => {
                                             <input type="checkbox" className="size-4 accent-zinc-600 dark:accent-zinc-500" onChange={() => selectedTasks.includes(task.id) ? setSelectedTasks(selectedTasks.filter((i) => i !== task.id)) : setSelectedTasks((prev) => [...prev, task.id])} checked={selectedTasks.includes(task.id)} />
                                         </div>
 
+                                        <WaitingOnBadge task={task} className="self-start" />
+
                                         <div className="text-xs text-zinc-600 dark:text-zinc-400 flex items-center gap-2">
                                             {Icon && <Icon className={`size-4 ${color}`} />}
                                             <span className={`${color} uppercase`}>{task.type}</span>
@@ -271,7 +285,7 @@ const ProjectTasks = ({ tasks }) => {
 
                                         <div>
                                             <label className="text-zinc-600 dark:text-zinc-400 text-xs">Status</label>
-                                            <select name="status" onChange={(e) => handleStatusChange(task.id, e.target.value)} value={task.status} className="w-full mt-1 bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-300 dark:ring-zinc-700 outline-none px-2 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200" >
+                                            <select name="status" disabled={!canEdit(task)} onChange={(e) => handleStatusChange(task.id, e.target.value)} value={task.status} className="disabled:cursor-not-allowed disabled:opacity-70 w-full mt-1 bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-300 dark:ring-zinc-700 outline-none px-2 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200" >
                                                 {statusOptions(task)}
                                             </select>
                                         </div>

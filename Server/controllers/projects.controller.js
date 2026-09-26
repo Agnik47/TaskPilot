@@ -1,9 +1,10 @@
 import prisma from '../config/prisma.js';
 import { filterTasksForRole } from '../services/authorization.service.js';
+import { openBlockersInclude } from '../services/blockers.service.js';
 
 const projectInclude = {
   members: { include: { user: true } },
-  tasks: { include: { assignee: true, creator: true }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
+  tasks: { include: { assignee: true, creator: true, blockers: openBlockersInclude }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
 };
 
 function shapeProject(project, dbUserId, orgRole) {

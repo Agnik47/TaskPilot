@@ -4,6 +4,7 @@ import { notifyInBackground } from '../services/notifications.service.js';
 import { planStatusChange, describeStatusEvent } from '../services/taskWorkflow.service.js';
 import { getWorkspaceSettings } from '../services/workspaceSettings.service.js';
 import { emitToTask } from '../realtime.js';
+import { openBlockersInclude } from '../services/blockers.service.js';
 import {
   isTaskVisibleTo,
   filterTasksForRole,
@@ -17,10 +18,11 @@ import {
 // With the relationJoins preview feature this loads in a single SQL statement.
 // Writes deliberately avoid `include`: Prisma wraps write+include in a
 // transaction with a follow-up SELECT, costing 3-4 extra round trips.
-const taskInclude = {
+export const taskInclude = {
   assignee: true,
   creator: true,
   project: { select: { id: true, name: true, workspaceId: true } },
+  blockers: openBlockersInclude,
 };
 
 // Due dates are optional: empty -> null, garbage -> undefined (invalid).
@@ -120,7 +122,7 @@ export async function createTask(req, res, next) {
     ]);
 
     // Same shape as `include: taskInclude`, assembled from data already in hand.
-    const task = { ...created, assignee, creator: req.dbUser, project };
+    const task = { ...created, assignee, creator: req.dbUser, project, blockers: [] };
 
     logActivitiesInBackground([{
       workspaceId: req.workspaceId,
@@ -223,14 +225,27 @@ export async function updateTask(req, res, next) {
       }
     }
 
+    // Moving out of Blocked means the wait is over: close the open blockers so
+    // the status and the "Waiting on …" list never disagree.
+    const unblocking = data.status !== undefined && data.status !== 'BLOCKED' && existing.blockers.length > 0;
+    if (unblocking) {
+      activities.push({
+        type: 'BLOCKER_RESOLVED',
+        message: `${req.dbUser.name} marked this unblocked (was waiting on ${existing.blockers.map((b) => b.waitingOn.name).join(', ')})`,
+      });
+    }
+
     // Only a reassignment needs a user we don't already have; fetch it
     // alongside the update rather than after it.
     const [updated, assignee] = await Promise.all([
       prisma.task.update({ where: { id: req.params.id }, data }),
       data.assigneeId !== undefined ? prisma.user.findUnique({ where: { id: data.assigneeId } }) : existing.assignee,
+      unblocking
+        ? prisma.taskBlocker.updateMany({ where: { taskId: existing.id, resolvedAt: null }, data: { resolvedAt: new Date(), resolvedById: req.dbUser.id } })
+        : null,
     ]);
 
-    const task = { ...updated, assignee, creator: existing.creator, project: existing.project };
+    const task = { ...updated, assignee, creator: existing.creator, project: existing.project, blockers: unblocking ? [] : existing.blockers };
 
     logActivitiesInBackground(
       activities.map((activity) => ({
@@ -292,7 +307,7 @@ export async function reviewTask(req, res, next) {
         : null,
     ]);
 
-    const task = { ...updated, assignee: existing.assignee, creator: existing.creator, project: existing.project };
+    const task = { ...updated, assignee: existing.assignee, creator: existing.creator, project: existing.project, blockers: existing.blockers };
     const effects = describeStatusEvent({ event: plan.event, task: existing, actor: req.dbUser, from: existing.status, to: plan.data.status, note: trimmedNote });
 
     if (comment) emitToTask(existing.id, 'comment:new', { ...comment, user: req.dbUser });
@@ -407,7 +422,7 @@ export async function bulkCreateTasks(req, res, next) {
 
     const usersById = new Map(users.map((u) => [u.id, u]));
     const projectRef = { id: project.id, name: project.name, workspaceId: project.workspaceId };
-    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: projectRef }));
+    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: projectRef, blockers: [] }));
 
     logActivitiesInBackground(
       tasks.map((t) => ({

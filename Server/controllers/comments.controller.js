@@ -4,6 +4,7 @@ import { isTaskVisibleTo } from '../services/authorization.service.js';
 import { emitToTask } from '../realtime.js';
 import { notifyInBackground } from '../services/notifications.service.js';
 import { sanitizeMentions } from '../services/mentions.service.js';
+import { openBlockersAccessSelect } from '../services/blockers.service.js';
 
 function checkTaskAccess(req, task) {
   if (!task || task.workspaceId !== req.workspaceId) return 404;
@@ -11,7 +12,7 @@ function checkTaskAccess(req, task) {
   return null;
 }
 
-const accessTaskSelect = { id: true, workspaceId: true, projectId: true, creatorId: true, assigneeId: true };
+const accessTaskSelect = { id: true, workspaceId: true, projectId: true, creatorId: true, assigneeId: true, blockers: openBlockersAccessSelect };
 
 export async function listComments(req, res, next) {
   try {
@@ -51,6 +52,8 @@ export async function createComment(req, res, next) {
         title: true,
         creator: { select: { id: true, name: true } },
         assignee: { select: { id: true, name: true } },
+        // People the task is waiting on can be @mentioned too.
+        blockers: { where: { resolvedAt: null }, select: { waitingOnId: true, waitingOn: { select: { id: true, name: true } } } },
       },
     });
     const error = checkTaskAccess(req, task);

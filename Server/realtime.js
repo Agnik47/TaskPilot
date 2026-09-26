@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import { verifyToken } from '@clerk/backend';
 import prisma from './config/prisma.js';
 import { isTaskVisibleTo } from './services/authorization.service.js';
+import { openBlockersAccessSelect } from './services/blockers.service.js';
 
 // Realtime layer for task discussions. Writes still go through the REST API
 // (single place for validation + authorization); sockets only fan changes out
@@ -69,7 +70,7 @@ export function initRealtime(httpServer) {
       try {
         const task = await prisma.task.findUnique({
           where: { id: String(taskId) },
-          select: { id: true, workspaceId: true, creatorId: true, assigneeId: true },
+          select: { id: true, workspaceId: true, creatorId: true, assigneeId: true, blockers: openBlockersAccessSelect },
         });
         if (!task || task.workspaceId !== workspaceId) return ack({ ok: false, error: 'NOT_FOUND' });
         if (!isTaskVisibleTo(user.id, orgRole, task)) return ack({ ok: false, error: 'FORBIDDEN' });
