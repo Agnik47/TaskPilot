@@ -123,7 +123,8 @@ model Task {
   priority    Priority   @default(MEDIUM)
   creatorId   String
   assigneeId  String
-  due_date    DateTime
+  due_date    DateTime? // optional
+  position    Float      @default(0) // manual order within the project (drag to reorder)
   completedAt DateTime?
   submittedAt DateTime? // when it entered IN_REVIEW ("waiting since")
   createdAt   DateTime   @default(now())
@@ -137,7 +138,7 @@ model Task {
   notifications Notification[]
 
   @@index([workspaceId])
-  @@index([projectId])
+  @@index([projectId, position])
   @@index([assigneeId])
   @@index([workspaceId, status])
   @@index([creatorId])

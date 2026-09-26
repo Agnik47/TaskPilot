@@ -23,6 +23,19 @@ const taskInclude = {
   project: { select: { id: true, name: true, workspaceId: true } },
 };
 
+// Due dates are optional: empty -> null, garbage -> undefined (invalid).
+function parseDueDate(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+// New tasks go to the bottom of their project's manual order.
+async function nextPosition(projectId) {
+  const { _max } = await prisma.task.aggregate({ where: { projectId }, _max: { position: true } });
+  return (_max.position ?? 0) + 1;
+}
+
 export async function listTasks(req, res, next) {
   try {
     const where = { workspaceId: req.workspaceId };
@@ -62,17 +75,24 @@ export async function createTask(req, res, next) {
   try {
     const { title, description, type, priority, status, assigneeId, due_date, projectId } = req.body;
 
-    if (!title || !projectId || !due_date) {
-      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'title, projectId and due_date are required.' });
+    if (!title || !projectId) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'title and projectId are required.' });
+    }
+    const due = parseDueDate(due_date);
+    if (due === undefined) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'due_date is not a valid date.' });
     }
     if (status === 'IN_REVIEW') {
       return res.status(400).json({ error: 'VALIDATION_ERROR', message: "A new task can't start in review." });
     }
 
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, name: true, workspaceId: true },
-    });
+    const [project, position] = await Promise.all([
+      prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true, workspaceId: true },
+      }),
+      nextPosition(projectId),
+    ]);
     if (!project || project.workspaceId !== req.workspaceId) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Project not found.' });
     }
@@ -91,7 +111,8 @@ export async function createTask(req, res, next) {
           priority,
           creatorId: req.dbUser.id,
           assigneeId: finalAssigneeId,
-          due_date: new Date(due_date),
+          due_date: due,
+          position,
           completedAt: status === 'DONE' ? new Date() : null,
         },
       }),
@@ -137,9 +158,17 @@ export async function updateTask(req, res, next) {
       return res.status(403).json({ error: 'FORBIDDEN', message: 'You cannot edit this task.' });
     }
 
-    const { title, description, type, priority, status, assigneeId, due_date } = req.body;
+    const { title, description, type, priority, status, assigneeId, due_date, position } = req.body;
     const data = {};
     const activities = [];
+
+    // Drag-to-reorder: the client sends a position between the new neighbours.
+    if (position !== undefined) {
+      if (typeof position !== 'number' || !Number.isFinite(position)) {
+        return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'position must be a number.' });
+      }
+      data.position = position;
+    }
 
     if (title !== undefined) data.title = title;
     if (description !== undefined) data.description = description;
@@ -154,8 +183,12 @@ export async function updateTask(req, res, next) {
       });
     }
 
-    if (due_date !== undefined && new Date(due_date).getTime() !== new Date(existing.due_date).getTime()) {
-      data.due_date = new Date(due_date);
+    const due = due_date === undefined ? undefined : parseDueDate(due_date);
+    if (due_date !== undefined && due === undefined) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'due_date is not a valid date.' });
+    }
+    if (due !== undefined && due?.getTime() !== existing.due_date?.getTime()) {
+      data.due_date = due;
       activities.push({
         type: 'DUE_DATE_CHANGED',
         message: `${req.dbUser.name} changed the due date`,
@@ -280,13 +313,13 @@ export async function reviewTask(req, res, next) {
 
 export async function deleteTask(req, res, next) {
   try {
+    if (!canDeleteTask(req.orgRole)) {
+      return res.status(403).json({ error: 'FORBIDDEN', message: 'Only the workspace owner can delete tasks.' });
+    }
+
     const existing = await prisma.task.findUnique({ where: { id: req.params.id } });
     if (!existing || existing.workspaceId !== req.workspaceId) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Task not found.' });
-    }
-
-    if (!canDeleteTask(req.dbUser.id, req.orgRole, existing)) {
-      return res.status(403).json({ error: 'FORBIDDEN', message: 'You cannot delete this task.' });
     }
 
     await prisma.task.delete({ where: { id: req.params.id } });
@@ -330,11 +363,11 @@ export async function bulkCreateTasks(req, res, next) {
     const data = rows.map((row, i) => {
       const n = i + 1;
       const title = typeof row?.title === 'string' ? row.title.trim() : '';
-      const due = row?.due_date ? new Date(row.due_date) : null;
+      const due = parseDueDate(row?.due_date);
 
       if (!title) errors.push({ row: n, field: 'title', message: `Row ${n}: title is required.` });
       else if (title.length > 500) errors.push({ row: n, field: 'title', message: `Row ${n}: title is too long.` });
-      if (!due || Number.isNaN(due.getTime())) errors.push({ row: n, field: 'due_date', message: `Row ${n}: a valid due date is required.` });
+      if (due === undefined) errors.push({ row: n, field: 'due_date', message: `Row ${n}: the due date isn't a valid date.` });
       if (row?.type && !TASK_TYPES.includes(row.type)) errors.push({ row: n, field: 'type', message: `Row ${n}: invalid type.` });
       if (row?.priority && !PRIORITIES.includes(row.priority)) errors.push({ row: n, field: 'priority', message: `Row ${n}: invalid priority.` });
       if (row?.status && !STATUSES.includes(row.status)) errors.push({ row: n, field: 'status', message: `Row ${n}: invalid status.` });
@@ -362,6 +395,9 @@ export async function bulkCreateTasks(req, res, next) {
     if (errors.length) {
       return res.status(400).json({ error: 'VALIDATION_ERROR', message: errors[0].message, errors });
     }
+
+    const firstPosition = await nextPosition(projectId);
+    data.forEach((d, i) => { d.position = firstPosition + i; });
 
     const assigneeIds = [...new Set(data.map((d) => d.assigneeId))];
     const [created, users] = await Promise.all([

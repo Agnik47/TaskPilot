@@ -9,6 +9,8 @@ import useTaskActions from "../hooks/useTaskActions";
 import { statusOptionsFor } from "../lib/taskWorkflow";
 import { bulkCreateTasks, deleteTask, updateTask } from "../features/workspaceSlice";
 import { ConfirmDialog } from "./settings/SettingsUI";
+import { sortByPosition } from "../lib/taskOrder";
+import { SortableItem, SortableTaskList } from "./SortableTasks";
 import CellSelect from "./sheet/CellSelect";
 import DateCell from "./sheet/DateCell";
 import {
@@ -65,7 +67,7 @@ const COLUMNS = {
     assigneeId: { label: "Assignee", width: 176 },
     status: { label: "Status", width: 140 },
     priority: { label: "Priority", width: 120 },
-    due_date: { label: "Due date", required: true, width: 132 },
+    due_date: { label: "Due date", width: 132 },
     description: { label: "Description", width: 240 },
 };
 
@@ -83,6 +85,10 @@ let draftSeq = 0;
 const newDraftKey = () => `draft-${Date.now()}-${draftSeq++}`;
 const isBlank = (v) => !v.title.trim() && !v.description.trim() && !v.due_date;
 
+const EMPTY_FILTERS = { status: "", type: "", priority: "", assigneeId: "" };
+// Filter can match IN_REVIEW even though it's not a status you can pick in a cell.
+const STATUS_FILTER_OPTIONS = [...STATUS_OPTIONS.slice(0, -1), { value: "IN_REVIEW", label: "In Review" }, STATUS_OPTIONS.at(-1)];
+
 const SHOW_DESC_KEY = "sheet.showDescription";
 const readShowDescription = () => {
     try {
@@ -99,7 +105,7 @@ export default function TaskSheet({ project }) {
     const { isOwner } = useOrgRole();
     const settings = useSelector((state) => state.workspace.settings);
     const { defaultTaskType, defaultTaskPriority } = settings;
-    const { setStatus } = useTaskActions();
+    const { setStatus, move } = useTaskActions();
     const containerRef = useRef(null);
     const gridRef = useRef(null);
 
@@ -127,9 +133,31 @@ export default function TaskSheet({ project }) {
     // ---- data ----
     const me = user?.id;
     const tasks = useMemo(
-        () => [...(project.tasks || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)),
+        () => sortByPosition(project.tasks || []),
         [project.tasks]
     );
+
+    // ---- filters (same set as the table view) ----
+    const [filters, setFilters] = useState(EMPTY_FILTERS);
+    const filtersActive = Object.values(filters).some(Boolean);
+    const assigneeFilterOptions = useMemo(() => {
+        const byId = new Map();
+        tasks.forEach((t) => t.assignee && byId.set(t.assignee.id, t.assignee.name));
+        return [...byId].map(([value, label]) => ({ value, label }));
+    }, [tasks]);
+    // Existing tasks shown in the grid; drafts are never filtered out.
+    const visibleTasks = useMemo(
+        () =>
+            tasks.filter((t) =>
+                (!filters.status || t.status === filters.status) &&
+                (!filters.type || t.type === filters.type) &&
+                (!filters.priority || t.priority === filters.priority) &&
+                (!filters.assigneeId || t.assigneeId === filters.assigneeId)
+            ),
+        [tasks, filters]
+    );
+    const visibleTaskIds = visibleTasks.map((t) => t.id);
+    const handleMove = (activeId, overId) => move(visibleTasks, activeId, overId);
 
     // Who can be assigned: project members for owners; employees only themselves.
     const people = useMemo(() => {
@@ -154,7 +182,7 @@ export default function TaskSheet({ project }) {
     const [pendingDelete, setPendingDelete] = useState(null);
 
     const filledDrafts = drafts.filter((d) => !isBlank(d.values));
-    const invalidOf = (v) => ({ title: !v.title.trim(), due_date: !v.due_date });
+    const invalidOf = (v) => ({ title: !v.title.trim() });
     const invalidCount = filledDrafts.filter((d) => Object.values(invalidOf(d.values)).some(Boolean)).length;
     const hasUnsaved = filledDrafts.length > 0;
 
@@ -174,7 +202,7 @@ export default function TaskSheet({ project }) {
 
     // ---- existing tasks: save one field at a time ----
     const canEdit = (t) => isOwner || t.creatorId === me || t.assigneeId === me;
-    const canDelete = (t) => isOwner || t.creatorId === me;
+    const canDelete = () => isOwner;
 
     const commitTask = async (task, field, value) => {
         if (field === "status") return setStatus(task, value);
@@ -206,8 +234,7 @@ export default function TaskSheet({ project }) {
     const focusFirstInvalid = () => {
         const index = drafts.findIndex((d) => !isBlank(d.values) && Object.values(invalidOf(d.values)).some(Boolean));
         if (index === -1) return;
-        const field = !drafts[index].values.title.trim() ? "title" : "due_date";
-        requestAnimationFrame(() => focusCell(tasks.length + index, field));
+        requestAnimationFrame(() => focusCell(visibleTasks.length + index, "title"));
     };
 
     // ---- save all new rows in one request ----
@@ -215,7 +242,7 @@ export default function TaskSheet({ project }) {
         if (saving || !filledDrafts.length) return;
         if (invalidCount) {
             setShowErrors(true);
-            toast.error(`${invalidCount} new ${invalidCount === 1 ? "row needs" : "rows need"} a task name and due date`);
+            toast.error(`${invalidCount} new ${invalidCount === 1 ? "row needs" : "rows need"} a task name`);
             focusFirstInvalid();
             return;
         }
@@ -333,7 +360,7 @@ export default function TaskSheet({ project }) {
         });
 
         // Pasting onto an existing task appends new rows instead of overwriting tasks.
-        const startDraft = Math.max(0, row - tasks.length);
+        const startDraft = Math.max(0, row - visibleTasks.length);
         setDrafts((prev) => {
             const next = [...prev];
             parsedRows.forEach((values, i) => {
@@ -411,7 +438,7 @@ export default function TaskSheet({ project }) {
                         status={values.status}
                         onChange={(v) => onChange("due_date", v)}
                         disabled={disabled.due_date}
-                        allowClear={kind === "draft"}
+                        allowClear
                         className={cell ? "h-10 px-3 text-sm" : `${chipClass} text-sm`}
                     />
                 );
@@ -439,7 +466,7 @@ export default function TaskSheet({ project }) {
 
     // Normalises existing tasks and drafts into one row model.
     const rows = [
-        ...tasks.map((task, i) => ({
+        ...visibleTasks.map((task, i) => ({
             kind: "task",
             key: task.id,
             row: i,
@@ -468,7 +495,7 @@ export default function TaskSheet({ project }) {
             return {
                 kind: "draft",
                 key: draft.key,
-                row: tasks.length + i,
+                row: visibleTasks.length + i,
                 draft,
                 blank,
                 values: draft.values,
@@ -533,6 +560,43 @@ export default function TaskSheet({ project }) {
     const cellBorder = "border-b border-zinc-200 dark:border-zinc-800";
     const invalidRing = "bg-red-50/70 dark:bg-red-500/10 shadow-[inset_0_0_0_1px_rgb(248_113_113)]";
 
+    // Cells of one grid row. `handle` is the drag grip (existing, editable tasks
+    // only); it replaces the row number while the row is hovered or focused.
+    const gridRowCells = (r, handle) => (
+        <>
+            <td className={`${cellBorder} text-center text-xs text-zinc-400 tabular-nums`}>
+                {handle ? (
+                    <div className="relative flex items-center justify-center h-10">
+                        <span className="group-hover:opacity-0 group-focus-within:opacity-0 transition-opacity">{r.row + 1}</span>
+                        <span className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">{handle}</span>
+                    </div>
+                ) : r.kind === "task" ? r.row + 1 : r.blank ? <Plus className="size-3.5 mx-auto text-zinc-300 dark:text-zinc-600" /> : <span className="inline-block size-1.5 rounded-full bg-blue-500" title="Not saved yet" />}
+            </td>
+            {columns.map((field) => (
+                <td
+                    key={field}
+                    className={`${cellBorder} p-0 focus-within:shadow-[inset_0_0_0_2px_rgb(59_130_246)] ${r.invalid?.[field] ? invalidRing : ""}`}
+                >
+                    {field === "title" ? (
+                        <div className="flex items-center pl-1.5">
+                            {typePicker(r.values, r.onChange, r.kind === "task" && r.disabled.type)}
+                            {titleInput(r, "flex-1 min-w-0 h-10 pl-1.5 pr-3")}
+                        </div>
+                    ) : field === "description" ? (
+                        descriptionInput(r, "w-full h-10 px-3")
+                    ) : (
+                        renderField(field, { ...r, variant: "cell", currentAssignee: r.kind === "task" ? r.task.assignee : null })
+                    )}
+                </td>
+            ))}
+            <td className={cellBorder}>
+                <div className="flex items-center justify-end gap-0.5 pr-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+                    {rowActions(r)}
+                </div>
+            </td>
+        </>
+    );
+
     const gridLayout = (
         <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
             <div className="overflow-auto max-h-[68vh]">
@@ -561,62 +625,69 @@ export default function TaskSheet({ project }) {
                             <th className={`sticky top-0 z-10 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur ${cellBorder}`} />
                         </tr>
                     </thead>
+                    <SortableTaskList ids={visibleTaskIds} onMove={handleMove}>
                     <tbody>
-                        {rows.map((r) => (
-                            <tr
-                                key={r.key}
-                                className={`group transition-colors ${r.kind === "draft" && !r.blank ? "bg-blue-50/60 dark:bg-blue-500/[0.07]" : "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/70"}`}
-                            >
-                                <td className={`${cellBorder} text-center text-xs text-zinc-400 tabular-nums`}>
-                                    {r.kind === "task" ? r.row + 1 : r.blank ? <Plus className="size-3.5 mx-auto text-zinc-300 dark:text-zinc-600" /> : <span className="inline-block size-1.5 rounded-full bg-blue-500" title="Not saved yet" />}
-                                </td>
-                                {columns.map((field) => (
-                                    <td
-                                        key={field}
-                                        className={`${cellBorder} p-0 focus-within:shadow-[inset_0_0_0_2px_rgb(59_130_246)] ${r.invalid?.[field] ? invalidRing : ""}`}
-                                    >
-                                        {field === "title" ? (
-                                            <div className="flex items-center pl-1.5">
-                                                {typePicker(r.values, r.onChange, r.kind === "task" && r.disabled.type)}
-                                                {titleInput(r, "flex-1 min-w-0 h-10 pl-1.5 pr-3")}
-                                            </div>
-                                        ) : field === "description" ? (
-                                            descriptionInput(r, "w-full h-10 px-3")
-                                        ) : (
-                                            renderField(field, { ...r, variant: "cell", currentAssignee: r.kind === "task" ? r.task.assignee : null })
-                                        )}
-                                    </td>
-                                ))}
-                                <td className={cellBorder}>
-                                    <div className="flex items-center justify-end gap-0.5 pr-2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                                        {rowActions(r)}
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
+                        {rows.map((r) => {
+                            const rowClass = `group transition-colors ${r.kind === "draft" && !r.blank ? "bg-blue-50/60 dark:bg-blue-500/[0.07]" : "hover:bg-zinc-50/80 dark:hover:bg-zinc-900/70"}`;
+                            return r.kind === "task" ? (
+                                <SortableItem
+                                    as="tr"
+                                    key={r.key}
+                                    id={r.key}
+                                    disabled={!r.editable}
+                                    className={rowClass}
+                                    draggingClassName="bg-white dark:bg-zinc-900 shadow-lg ring-1 ring-blue-500/40"
+                                >
+                                    {(handle) => gridRowCells(r, handle)}
+                                </SortableItem>
+                            ) : (
+                                <tr key={r.key} className={rowClass}>{gridRowCells(r, null)}</tr>
+                            );
+                        })}
                     </tbody>
+                    </SortableTaskList>
                 </table>
-                {tasks.length === 0 && (
+                {tasks.length === 0 ? (
                     <p className="px-4 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
                         No tasks yet. Type in the row above, or paste rows copied from Excel or Google Sheets.
+                    </p>
+                ) : visibleTasks.length === 0 && (
+                    <p className="px-4 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                        No tasks found for the selected filters.
                     </p>
                 )}
             </div>
         </div>
     );
 
+    const cardClass = (r) =>
+        `rounded-xl border p-3 transition-colors ${r.kind === "draft" && !r.blank
+            ? "border-blue-200 bg-blue-50/50 dark:border-blue-500/30 dark:bg-blue-500/[0.07]"
+            : r.blank
+                ? "border-dashed border-zinc-300 dark:border-zinc-700 bg-transparent"
+                : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"}`;
+
     const cardsLayout = (
         <div onPaste={handlePaste} className="space-y-2.5">
-            {rows.map((r) => (
-                <div
-                    key={r.key}
-                    className={`rounded-xl border p-3 transition-colors ${r.kind === "draft" && !r.blank
-                        ? "border-blue-200 bg-blue-50/50 dark:border-blue-500/30 dark:bg-blue-500/[0.07]"
-                        : r.blank
-                            ? "border-dashed border-zinc-300 dark:border-zinc-700 bg-transparent"
-                            : "border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900"}`}
-                >
+            <SortableTaskList ids={visibleTaskIds} onMove={handleMove}>
+                {rows.map((r) =>
+                    r.kind === "task" ? (
+                        <SortableItem key={r.key} id={r.key} disabled={!r.editable} className={cardClass(r)} draggingClassName="shadow-xl ring-1 ring-blue-500/40">
+                            {(handle) => cardContent(r, handle)}
+                        </SortableItem>
+                    ) : (
+                        <div key={r.key} className={cardClass(r)}>{cardContent(r, null)}</div>
+                    )
+                )}
+            </SortableTaskList>
+        </div>
+    );
+
+    function cardContent(r, handle) {
+        return (
+            <>
                     <div className="flex items-center gap-1">
+                        {handle && <span className="-ml-1.5">{handle}</span>}
                         {typePicker(r.values, r.onChange, r.kind === "task" && r.disabled.type)}
                         <div className={`flex-1 min-w-0 rounded-md focus-within:ring-2 focus-within:ring-blue-500 ${r.invalid?.title ? invalidRing : ""}`}>
                             {titleInput(r, "w-full h-9 px-2 text-[15px] font-medium")}
@@ -638,10 +709,9 @@ export default function TaskSheet({ project }) {
                             </div>
                         </>
                     )}
-                </div>
-            ))}
-        </div>
-    );
+            </>
+        );
+    }
 
     const saveBar = hasUnsaved && (
         <div
@@ -666,10 +736,36 @@ export default function TaskSheet({ project }) {
 
     return (
         <div ref={containerRef} className={!wide && hasUnsaved ? "pb-20" : ""}>
+            {/* Filters */}
+            <div className="flex flex-wrap gap-4 mb-4">
+                {[
+                    ["status", "All Statuses", STATUS_FILTER_OPTIONS],
+                    ["type", "All Types", TYPE_OPTIONS],
+                    ["priority", "All Priorities", PRIORITY_OPTIONS],
+                    ["assigneeId", "All Assignees", assigneeFilterOptions],
+                ].map(([name, allLabel, options]) => (
+                    <select
+                        key={name}
+                        name={name}
+                        value={filters[name]}
+                        onChange={(e) => setFilters((prev) => ({ ...prev, [name]: e.target.value }))}
+                        className="border not-dark:bg-white border-zinc-300 dark:border-zinc-800 outline-none px-3 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200"
+                    >
+                        <option value="">{allLabel}</option>
+                        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    </select>
+                ))}
+                {filtersActive && (
+                    <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-purple-400 to-purple-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors">
+                        <X className="size-3" /> Reset
+                    </button>
+                )}
+            </div>
+
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 mb-3">
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mr-auto">
-                    {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                    {filtersActive && `${visibleTasks.length} of `}{tasks.length} {tasks.length === 1 ? "task" : "tasks"}
                 </p>
                 {wide && (
                     <>

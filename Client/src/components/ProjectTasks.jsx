@@ -7,6 +7,8 @@ import { deleteTask } from "../features/workspaceSlice";
 import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import { statusOptionsFor } from "../lib/taskWorkflow";
+import { sortByPosition } from "../lib/taskOrder";
+import { SortableItem, SortableTaskList } from "./SortableTasks";
 import { Bug, CalendarIcon, GitCommit, MessageSquare, Square, Trash, XIcon, Zap } from "lucide-react";
 
 const typeIcons = {
@@ -30,7 +32,7 @@ const ProjectTasks = ({ tasks }) => {
     const [selectedTasks, setSelectedTasks] = useState([]);
     const { isOwner } = useOrgRole();
     const settings = useSelector((state) => state.workspace.settings);
-    const { setStatus } = useTaskActions();
+    const { setStatus, move } = useTaskActions();
     const statusOptions = (task) =>
         statusOptionsFor(task, { isOwner, settings }).map((o) => (
             <option key={o.value} value={o.value} disabled={o.disabled}>{o.label}</option>
@@ -49,7 +51,7 @@ const ProjectTasks = ({ tasks }) => {
     );
 
     const filteredTasks = useMemo(() => {
-        return tasks.filter((task) => {
+        return sortByPosition(tasks).filter((task) => {
             const { status, type, priority, assignee } = filters;
             return (
                 (!status || task.status === status) &&
@@ -70,6 +72,10 @@ const ProjectTasks = ({ tasks }) => {
         const task = tasks.find((t) => t.id === taskId);
         if (task) setStatus(task, newStatus);
     };
+
+    const filteredIds = filteredTasks.map((t) => t.id);
+    const handleMove = (activeId, overId) => move(filteredTasks, activeId, overId);
+    const dueLabel = (task) => (task.due_date ? format(new Date(task.due_date), "dd MMMM") : "No due date");
 
     const handleDelete = async () => {
         try {
@@ -137,7 +143,7 @@ const ProjectTasks = ({ tasks }) => {
                     </button>
                 )}
 
-                {selectedTasks.length > 0 && (
+                {isOwner && selectedTasks.length > 0 && (
                     <button type="button" onClick={handleDelete} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-indigo-400 to-indigo-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors" >
                         <Trash className="size-3" /> Delete
                     </button>
@@ -152,7 +158,8 @@ const ProjectTasks = ({ tasks }) => {
                         <table className="min-w-full text-sm text-left not-dark:bg-white text-zinc-900 dark:text-zinc-300">
                             <thead className="text-xs uppercase dark:bg-zinc-800/70 text-zinc-500 dark:text-zinc-400 ">
                                 <tr>
-                                    <th className="pl-2 pr-1">
+                                    <th className="w-7 pl-1" aria-label="Reorder" />
+                                    <th className="pl-1 pr-1">
                                         <input onChange={() => selectedTasks.length > 1 ? setSelectedTasks([]) : setSelectedTasks(tasks.map((t) => t.id))} checked={selectedTasks.length === tasks.length} type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" />
                                     </th>
                                     <th className="px-4 pl-0 py-3">Title</th>
@@ -163,6 +170,7 @@ const ProjectTasks = ({ tasks }) => {
                                     <th className="px-4 py-3">Due Date</th>
                                 </tr>
                             </thead>
+                            <SortableTaskList ids={filteredIds} onMove={handleMove}>
                             <tbody>
                                 {filteredTasks.length > 0 ? (
                                     filteredTasks.map((task) => {
@@ -170,8 +178,17 @@ const ProjectTasks = ({ tasks }) => {
                                         const { background, prioritycolor } = priorityTexts[task.priority] || {};
 
                                         return (
-                                            <tr key={task.id} onClick={() => navigate(`/taskDetails?projectId=${task.projectId}&taskId=${task.id}`)} className=" border-t border-zinc-300 dark:border-zinc-800 group hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-all cursor-pointer" >
-                                                <td onClick={e => e.stopPropagation()} className="pl-2 pr-1">
+                                            <SortableItem
+                                                as="tr"
+                                                id={task.id}
+                                                key={task.id}
+                                                onClick={() => navigate(`/taskDetails?projectId=${task.projectId}&taskId=${task.id}`)}
+                                                className="border-t border-zinc-300 dark:border-zinc-800 group hover:bg-zinc-50 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
+                                                draggingClassName="bg-white dark:bg-zinc-800 shadow-lg ring-1 ring-blue-500/40"
+                                            >
+                                                {(handle) => (<>
+                                                <td onClick={e => e.stopPropagation()} className="pl-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">{handle}</td>
+                                                <td onClick={e => e.stopPropagation()} className="pl-1 pr-1">
                                                     <input type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" onChange={() => selectedTasks.includes(task.id) ? setSelectedTasks(selectedTasks.filter((i) => i !== task.id)) : setSelectedTasks((prev) => [...prev, task.id])} checked={selectedTasks.includes(task.id)} />
                                                 </td>
                                                 <td className="px-4 pl-0 py-2">{task.title}</td>
@@ -200,34 +217,44 @@ const ProjectTasks = ({ tasks }) => {
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-1 text-zinc-600 dark:text-zinc-400">
                                                         <CalendarIcon className="size-4" />
-                                                        {format(new Date(task.due_date), "dd MMMM")}
+                                                        {dueLabel(task)}
                                                     </div>
                                                 </td>
-                                            </tr>
+                                                </>)}
+                                            </SortableItem>
                                         );
                                     })
                                 ) : (
                                     <tr>
-                                        <td colSpan="7" className="text-center text-zinc-500 dark:text-zinc-400 py-6">
+                                        <td colSpan="8" className="text-center text-zinc-500 dark:text-zinc-400 py-6">
                                             No tasks found for the selected filters.
                                         </td>
                                     </tr>
                                 )}
                             </tbody>
+                            </SortableTaskList>
                         </table>
                     </div>
 
                     {/* Mobile/Card View */}
                     <div className="lg:hidden flex flex-col gap-4">
                         {filteredTasks.length > 0 ? (
-                            filteredTasks.map((task) => {
+                            <SortableTaskList ids={filteredIds} onMove={handleMove}>
+                            {filteredTasks.map((task) => {
                                 const { icon: Icon, color } = typeIcons[task.type] || {};
                                 const { background, prioritycolor } = priorityTexts[task.priority] || {};
 
                                 return (
-                                    <div key={task.id} className=" dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4 flex flex-col gap-2">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-zinc-900 dark:text-zinc-200 text-sm font-semibold">{task.title}</h3>
+                                    <SortableItem
+                                        key={task.id}
+                                        id={task.id}
+                                        className="bg-white dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4 flex flex-col gap-2"
+                                        draggingClassName="shadow-xl ring-1 ring-blue-500/40"
+                                    >
+                                        {(handle) => (<>
+                                        <div className="flex items-center gap-2">
+                                            <span className="-ml-2">{handle}</span>
+                                            <h3 className="text-zinc-900 dark:text-zinc-200 text-sm font-semibold mr-auto">{task.title}</h3>
                                             <input type="checkbox" className="size-4 accent-zinc-600 dark:accent-zinc-500" onChange={() => selectedTasks.includes(task.id) ? setSelectedTasks(selectedTasks.filter((i) => i !== task.id)) : setSelectedTasks((prev) => [...prev, task.id])} checked={selectedTasks.includes(task.id)} />
                                         </div>
 
@@ -256,11 +283,13 @@ const ProjectTasks = ({ tasks }) => {
 
                                         <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                                             <CalendarIcon className="size-4" />
-                                            {format(new Date(task.due_date), "dd MMMM")}
+                                            {dueLabel(task)}
                                         </div>
-                                    </div>
+                                        </>)}
+                                    </SortableItem>
                                 );
-                            })
+                            })}
+                            </SortableTaskList>
                         ) : (
                             <p className="text-center text-zinc-500 dark:text-zinc-400 py-4">
                                 No tasks found for the selected filters.

@@ -33,7 +33,7 @@ const ProjectAnalytics = ({ project, tasks }) => {
             if (t.status === "IN_PROGRESS") stats.inProgress++;
             if (t.status === "TODO") stats.todo++;
             if (t.status === "BLOCKED") stats.blocked = (stats.blocked || 0) + 1;
-            if (new Date(t.due_date) < now && t.status !== "DONE" && t.status !== "IN_REVIEW") stats.overdue++;
+            if (t.due_date && new Date(t.due_date) < now && t.status !== "DONE" && t.status !== "IN_REVIEW") stats.overdue++;
 
             if (statusMap[t.status] !== undefined) statusMap[t.status]++;
             if (typeMap[t.type] !== undefined) typeMap[t.type]++;

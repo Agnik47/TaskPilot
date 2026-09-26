@@ -3,7 +3,7 @@ import { filterTasksForRole } from '../services/authorization.service.js';
 
 const projectInclude = {
   members: { include: { user: true } },
-  tasks: { include: { assignee: true, creator: true } },
+  tasks: { include: { assignee: true, creator: true }, orderBy: [{ position: 'asc' }, { createdAt: 'asc' }] },
 };
 
 function shapeProject(project, dbUserId, orgRole) {

@@ -34,7 +34,7 @@ export async function getSummary(req, res, next) {
     for (const t of tasks) {
       counts[t.status] = (counts[t.status] ?? 0) + 1;
 
-      if (t.status !== 'DONE' && t.status !== 'IN_REVIEW') {
+      if (t.due_date && t.status !== 'DONE' && t.status !== 'IN_REVIEW') {
         const due = new Date(t.due_date);
         if (due < todayStart) overdue += 1;
         else if (due >= todayStart && due < todayEnd) dueToday += 1;

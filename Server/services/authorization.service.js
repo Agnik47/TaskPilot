@@ -34,7 +34,7 @@ export function canSetAssignee(orgRole, nextAssigneeId, dbUserId) {
   return nextAssigneeId === dbUserId;
 }
 
-export function canDeleteTask(dbUserId, orgRole, task) {
-  if (isOwner(orgRole)) return true;
-  return task.creatorId === dbUserId;
+// Only the workspace owner can delete tasks — not even the task's creator.
+export function canDeleteTask(orgRole) {
+  return isOwner(orgRole);
 }

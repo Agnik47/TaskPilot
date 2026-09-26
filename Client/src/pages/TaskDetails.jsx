@@ -301,7 +301,7 @@ const TaskDetails = () => {
                         </div>
                         <div className="flex items-center gap-2">
                             <CalendarIcon className="size-4 text-gray-500 dark:text-zinc-500" />
-                            Due : {format(new Date(task.due_date), "dd MMM yyyy")}
+                            Due : {task.due_date ? format(new Date(task.due_date), "dd MMM yyyy") : "No due date"}
                         </div>
                         {task.creator && (
                             <div className="flex items-center gap-2 col-span-2 text-xs text-gray-500 dark:text-zinc-500">

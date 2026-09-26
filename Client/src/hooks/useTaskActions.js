@@ -3,6 +3,7 @@ import toast from "react-hot-toast";
 import useOrgRole from "./useOrgRole";
 import { reviewTask, updateTask } from "../features/workspaceSlice";
 import { expectedStatus } from "../lib/taskWorkflow";
+import { positionForMove } from "../lib/taskOrder";
 
 // One place for status changes and review decisions, so the table, sheet and
 // task page behave identically: instant (optimistic) UI, the server's own
@@ -39,5 +40,16 @@ export default function useTaskActions() {
         }
     };
 
-    return { setStatus, approve: (task) => review(task, "approve"), requestChanges: (task, note) => review(task, "changes", note) };
+    // Drag-to-reorder: `list` is the order on screen. Optimistic, rolls back on failure.
+    const move = async (list, activeId, overId) => {
+        const position = positionForMove(list, activeId, overId);
+        if (position === null) return;
+        try {
+            await dispatch(updateTask({ id: activeId, position })).unwrap();
+        } catch (error) {
+            toast.error(error?.message || "Couldn't move the task");
+        }
+    };
+
+    return { setStatus, move, approve: (task) => review(task, "approve"), requestChanges: (task, note) => review(task, "changes", note) };
 }
