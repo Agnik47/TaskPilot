@@ -6,6 +6,10 @@
 //   an owner completes, skip review. Owners can switch the rule off per
 //   workspace (settings.requireApproval).
 //
+//   Review is also opt-in: an employee can send any of their tasks (e.g. one
+//   they created themselves) for review by picking "In Review". It then works
+//   like required review until an owner decides or the employee withdraws it.
+//
 // planStatusChange is pure (no I/O) so every rule is unit-testable; callers
 // persist `data` and act on `event`.
 
@@ -27,11 +31,14 @@ export function planStatusChange({ task, requested, actorIsOwner, settings, now 
   const from = task.status;
   const approval = needsApproval(task, settings);
 
-  // "In Review" can't be picked directly — it's what "Done" means for work
-  // that needs sign-off. Owners are the approvers, so they never submit.
+  // "In Review" means "Done, pending sign-off": it's what "Done" becomes for
+  // work that needs approval, and employees can also ask for it on work that
+  // doesn't. Owners are the approvers, so they never submit.
   let target = requested;
+  let optIn = false;
   if (target === 'IN_REVIEW') {
-    if (actorIsOwner || !approval) return { error: 'Only work waiting for an owner’s approval can be In Review — mark it Done instead.' };
+    if (actorIsOwner) return { error: 'Owners approve work rather than send it for review — mark it Done instead.' };
+    optIn = !approval;
     target = 'DONE';
   }
 
@@ -44,8 +51,9 @@ export function planStatusChange({ task, requested, actorIsOwner, settings, now 
         event: from === 'IN_REVIEW' ? 'APPROVED' : 'COMPLETED',
       };
     }
-    if (approval) {
-      if (from === 'IN_REVIEW') return { noop: true };
+    // Waiting for an owner: only they can finish it (the employee can withdraw).
+    if (from === 'IN_REVIEW') return { noop: true };
+    if (approval || optIn) {
       return { data: { status: 'IN_REVIEW', submittedAt: now, completedAt: null }, event: 'SUBMITTED' };
     }
     return { data: { status: 'DONE', completedAt: now, submittedAt: null }, event: 'COMPLETED' };
@@ -66,8 +74,11 @@ const LABELS = { TODO: 'To Do', IN_PROGRESS: 'In Progress', BLOCKED: 'Blocked', 
 /**
  * Activity rows and notifications for a planned change.
  * `note` is the optional "request changes" message (already saved as a comment).
+ * `reviewerIds`: who to ask on SUBMITTED — defaults to the task's creator (the
+ * owner who assigned it); pass the workspace owners when the employee created
+ * it themselves.
  */
-export function describeStatusEvent({ event, task, actor, from, to, note }) {
+export function describeStatusEvent({ event, task, actor, from, to, note, reviewerIds = [task.creatorId] }) {
   const who = actor.name;
   const activities = [];
   const notifications = [];
@@ -83,7 +94,9 @@ export function describeStatusEvent({ event, task, actor, from, to, note }) {
     case 'SUBMITTED':
       activities.push({ type: 'SUBMITTED_FOR_REVIEW', message: `${who} marked this done and sent it for review`, metadata: { from, to } });
       // The owner who assigned it reviews it (any owner may approve).
-      notifications.push({ userId: task.creatorId, type: 'REVIEW_REQUESTED', message: `${who} finished "${task.title}" — ready for your review` });
+      for (const userId of reviewerIds) {
+        notifications.push({ userId, type: 'REVIEW_REQUESTED', message: `${who} finished "${task.title}" — ready for your review` });
+      }
       break;
     case 'APPROVED':
       activities.push({ type: 'TASK_APPROVED', message: `${who} approved this task`, metadata: { from, to } });

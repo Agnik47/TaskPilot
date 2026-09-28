@@ -29,7 +29,7 @@ import QuickAdd from "./QuickAdd";
 // while it's dragged. Mouse, touch (press and hold) and keyboard all work.
 
 const COLUMN_HINTS = {
-    IN_REVIEW: "Finished work waiting for an owner's approval",
+    IN_REVIEW: "Finished work waiting for an owner's approval. Drop your task here to ask for a review",
     BLOCKED: "Waiting on someone or something",
 };
 // Blocked needs a person and reason (the dialog), In Review/Done are reached by

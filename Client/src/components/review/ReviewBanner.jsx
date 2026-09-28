@@ -4,7 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { CheckCircle2, Clock3, Loader2Icon, RotateCcw, ShieldCheck, Undo2 } from "lucide-react";
 import useOrgRole from "../../hooks/useOrgRole";
 import useTaskActions from "../../hooks/useTaskActions";
-import { needsApproval } from "../../lib/taskWorkflow";
+import { needsApproval, reviewerName } from "../../lib/taskWorkflow";
 import RequestChangesDialog from "./RequestChangesDialog";
 
 // Contextual review panel for the task page:
@@ -33,7 +33,7 @@ export default function ReviewBanner({ task }) {
                     <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-violet-900 dark:text-violet-100">Ready for your review</p>
                         <p className="text-sm text-violet-800/80 dark:text-violet-200/80 mt-0.5">
-                            {task.assignee?.name || "The assignee"} marked this done{since ? ` ${since}` : ""}. Approve it to complete the task, or send it back with notes.
+                            {task.assignee?.name || "The assignee"} {needsApproval(task, settings) ? "marked this done" : "sent this for review"}{since ? ` ${since}` : ""}. Approve it to complete the task, or send it back with notes.
                         </p>
                     </div>
                 </div>
@@ -57,7 +57,7 @@ export default function ReviewBanner({ task }) {
                 <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-violet-900 dark:text-violet-100">Waiting for approval</p>
                     <p className="text-sm text-violet-800/80 dark:text-violet-200/80 mt-0.5">
-                        Sent to {task.creator?.name || "the owner"}{since ? ` ${since}` : ""}. You'll be notified when it's approved or needs changes.
+                        Sent to {reviewerName(task, settings)}{since ? ` ${since}` : ""}. You'll be notified when it's approved or needs changes.
                     </p>
                 </div>
                 <button type="button" onClick={() => run("withdraw", () => setStatus(task, "IN_PROGRESS"))} disabled={!!busy} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm text-violet-800 dark:text-violet-200 hover:bg-violet-100 dark:hover:bg-violet-500/15 disabled:opacity-50">

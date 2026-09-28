@@ -3,6 +3,7 @@ import { logActivitiesInBackground } from '../services/activity.service.js';
 import { notifyInBackground } from '../services/notifications.service.js';
 import { planStatusChange, describeStatusEvent } from '../services/taskWorkflow.service.js';
 import { getWorkspaceSettings } from '../services/workspaceSettings.service.js';
+import { workspaceOwnerIds } from '../services/owners.service.js';
 import { emitToTask } from '../realtime.js';
 import { openBlockersInclude } from '../services/blockers.service.js';
 import { checklistInclude } from '../services/taskAccess.service.js';
@@ -221,7 +222,9 @@ export async function updateTask(req, res, next) {
       if (plan.error) return res.status(400).json({ error: 'INVALID_TRANSITION', message: plan.error });
       if (!plan.noop) {
         Object.assign(data, plan.data);
-        const effects = describeStatusEvent({ event: plan.event, task: subject, actor: req.dbUser, from: existing.status, to: plan.data.status });
+        // Work the employee created themselves has no assigning owner to ask, so every owner is asked.
+        const reviewerIds = plan.event === 'SUBMITTED' && subject.creatorId === req.dbUser.id ? await workspaceOwnerIds(req.workspaceId) : undefined;
+        const effects = describeStatusEvent({ event: plan.event, task: subject, actor: req.dbUser, from: existing.status, to: plan.data.status, reviewerIds });
         activities.push(...effects.activities);
         statusNotifications = effects.notifications;
       }

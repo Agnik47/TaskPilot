@@ -2,7 +2,7 @@ import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import useOrgRole from "./useOrgRole";
 import { addBlocker, nudgeBlocker, resolveBlocker, reviewTask, updateTask } from "../features/workspaceSlice";
-import { expectedStatus } from "../lib/taskWorkflow";
+import { expectedStatus, reviewerName } from "../lib/taskWorkflow";
 import { positionForMove } from "../lib/taskOrder";
 import { openBlockers, requestBlockerDialog } from "../lib/blockers";
 
@@ -30,7 +30,7 @@ export default function useTaskActions() {
         try {
             const updated = await dispatch(updateTask({ id: task.id, status, ...placed, optimistic })).unwrap();
             if (updated.status === "IN_REVIEW" && task.status !== "IN_REVIEW") {
-                toast.success(`Sent to ${task.creator?.name || "the owner"} for approval`);
+                toast.success(`Sent to ${reviewerName(task, settings)} for review`);
             } else if (status !== "BLOCKED" && clearing.length) {
                 toast.success(`Unblocked. No longer waiting on ${clearing.map((b) => b.waitingOn?.name).join(", ")}`);
             }
