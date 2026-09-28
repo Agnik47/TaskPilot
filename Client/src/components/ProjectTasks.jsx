@@ -8,7 +8,7 @@ import { deleteTask } from "../features/workspaceSlice";
 import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import { statusOptionsFor } from "../lib/taskWorkflow";
-import { sortByPosition } from "../lib/taskOrder";
+import { SORT_OPTIONS, sortByPosition, sortTasks } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
 import WaitingOnBadge from "./blockers/WaitingOnBadge";
 import ChecklistProgress from "./checklist/ChecklistProgress";
@@ -51,13 +51,16 @@ const ProjectTasks = ({ tasks }) => {
         assignee: "",
     });
 
+    // A sorted view can't be dragged: the order shown isn't the stored order.
+    const [sort, setSort] = useState("");
+
     const assigneeList = useMemo(
         () => Array.from(new Set(tasks.map((t) => t.assignee?.name).filter(Boolean))),
         [tasks]
     );
 
     const filteredTasks = useMemo(() => {
-        return sortByPosition(tasks).filter((task) => {
+        return sortTasks(sortByPosition(tasks).filter((task) => {
             const { status, type, priority, assignee } = filters;
             return (
                 (!status || task.status === status) &&
@@ -65,8 +68,8 @@ const ProjectTasks = ({ tasks }) => {
                 (!priority || task.priority === priority) &&
                 (!assignee || task.assignee?.name === assignee)
             );
-        });
-    }, [filters, tasks]);
+        }), sort);
+    }, [filters, tasks, sort]);
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
@@ -142,6 +145,19 @@ const ProjectTasks = ({ tasks }) => {
                     );
                 })}
 
+                <select
+                    name="sort"
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value)}
+                    aria-label="Sort tasks"
+                    title={sort ? "Switch back to Manual order to drag rows" : undefined}
+                    className={`border outline-none px-3 py-1 rounded text-sm ${sort
+                        ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+                        : "not-dark:bg-white border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-200"}`}
+                >
+                    {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
+                </select>
+
                 {/* Reset filters */}
                 {(filters.status || filters.type || filters.priority || filters.assignee) && (
                     <button type="button" onClick={() => setFilters({ status: "", type: "", priority: "", assignee: "" })} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-purple-400 to-purple-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors" >
@@ -185,9 +201,8 @@ const ProjectTasks = ({ tasks }) => {
 
                                         return (
                                             <SortableItem
-                                        disabled={!canEdit(task)}
                                                 as="tr"
-                                                disabled={!canEdit(task)}
+                                                disabled={!canEdit(task) || !!sort}
                                                 id={task.id}
                                                 key={task.id}
                                                 onClick={() => navigate(`/taskDetails?projectId=${task.projectId}&taskId=${task.id}`)}
@@ -262,6 +277,7 @@ const ProjectTasks = ({ tasks }) => {
                                     <SortableItem
                                         key={task.id}
                                         id={task.id}
+                                        disabled={!canEdit(task) || !!sort}
                                         className="bg-white dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4 flex flex-col gap-2"
                                         draggingClassName="shadow-xl ring-1 ring-blue-500/40"
                                     >

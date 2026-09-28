@@ -2,18 +2,21 @@ import { Hourglass } from "lucide-react";
 import { openBlockers, waitingFor } from "../../lib/blockers";
 
 // Compact "Waiting on Priya · 2 days" chip for task lists. The tooltip lists
-// every open blocker with its reason.
-export default function WaitingOnBadge({ task, className = "" }) {
+// every open blocker with its reason. `compact` (tight table cells) drops the
+// "Waiting on Priya" words and keeps the avatar and how long.
+export default function WaitingOnBadge({ task, compact = false, className = "" }) {
     const blockers = openBlockers(task);
     if (!blockers.length) return null;
 
     const first = blockers[0];
     const label = blockers.length === 1 ? `Waiting on ${first.waitingOn?.name?.split(" ")[0]} · ${waitingFor(first)}` : `Waiting on ${blockers.length} people`;
+    const shown = compact ? (blockers.length === 1 ? waitingFor(first) : `${blockers.length} people`) : label;
     const tooltip = blockers.map((b) => `${b.waitingOn?.name} (${waitingFor(b)}): ${b.reason}`).join("\n");
 
     return (
         <span
             title={tooltip}
+            aria-label={label}
             className={`inline-flex items-center gap-1.5 max-w-full pl-1 pr-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-500/10 dark:text-amber-200 dark:ring-amber-500/30 whitespace-nowrap ${className}`}
         >
             <span className="flex -space-x-1.5 shrink-0">
@@ -25,7 +28,7 @@ export default function WaitingOnBadge({ task, className = "" }) {
                     )
                 )}
             </span>
-            <span className="truncate">{label}</span>
+            <span className="truncate">{shown}</span>
         </span>
     );
 }

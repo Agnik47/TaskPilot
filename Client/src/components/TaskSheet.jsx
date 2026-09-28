@@ -9,7 +9,7 @@ import useTaskActions from "../hooks/useTaskActions";
 import { statusOptionsFor } from "../lib/taskWorkflow";
 import { bulkCreateTasks, deleteTask, updateTask } from "../features/workspaceSlice";
 import { ConfirmDialog } from "./settings/SettingsUI";
-import { sortByPosition } from "../lib/taskOrder";
+import { SORT_OPTIONS, sortByPosition, sortTasks } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
 import WaitingOnBadge from "./blockers/WaitingOnBadge";
 import ChecklistProgress from "./checklist/ChecklistProgress";
@@ -142,6 +142,8 @@ export default function TaskSheet({ project }) {
     // ---- filters (same set as the table view) ----
     const [filters, setFilters] = useState(EMPTY_FILTERS);
     const filtersActive = Object.values(filters).some(Boolean);
+    // A sorted view can't be dragged: the order shown isn't the stored order.
+    const [sort, setSort] = useState("");
     const assigneeFilterOptions = useMemo(() => {
         const byId = new Map();
         tasks.forEach((t) => t.assignee && byId.set(t.assignee.id, t.assignee.name));
@@ -150,13 +152,13 @@ export default function TaskSheet({ project }) {
     // Existing tasks shown in the grid; drafts are never filtered out.
     const visibleTasks = useMemo(
         () =>
-            tasks.filter((t) =>
+            sortTasks(tasks.filter((t) =>
                 (!filters.status || t.status === filters.status) &&
                 (!filters.type || t.type === filters.type) &&
                 (!filters.priority || t.priority === filters.priority) &&
                 (!filters.assigneeId || t.assigneeId === filters.assigneeId)
-            ),
-        [tasks, filters]
+            ), sort),
+        [tasks, filters, sort]
     );
     const visibleTaskIds = visibleTasks.map((t) => t.id);
     const handleMove = (activeId, overId) => move(visibleTasks, activeId, overId);
@@ -582,9 +584,14 @@ export default function TaskSheet({ project }) {
                     {field === "title" ? (
                         <div className="flex items-center pl-1.5">
                             {typePicker(r.values, r.onChange, r.kind === "task" && r.disabled.type)}
-                            {titleInput(r, "flex-1 min-w-0 h-10 pl-1.5 pr-3")}
-                            {r.kind === "task" && <ChecklistProgress task={r.task} className="mr-2" />}
-                            {r.kind === "task" && <WaitingOnBadge task={r.task} className="mr-2 max-w-[50%]" />}
+                            {/* The name always keeps most of the cell; the badges shrink to fit beside it. */}
+                            {titleInput(r, "flex-1 min-w-[55%] h-10 pl-1.5 pr-2")}
+                            {r.kind === "task" && (
+                                <div className="flex items-center justify-end gap-1.5 min-w-0 shrink pr-2">
+                                    <ChecklistProgress task={r.task} className="shrink-0" />
+                                    <WaitingOnBadge task={r.task} compact className="min-w-0" />
+                                </div>
+                            )}
                         </div>
                     ) : field === "description" ? (
                         descriptionInput(r, "w-full h-10 px-3")
@@ -638,7 +645,7 @@ export default function TaskSheet({ project }) {
                                     as="tr"
                                     key={r.key}
                                     id={r.key}
-                                    disabled={!r.editable}
+                                    disabled={!r.editable || !!sort}
                                     className={rowClass}
                                     draggingClassName="bg-white dark:bg-zinc-900 shadow-lg ring-1 ring-blue-500/40"
                                 >
@@ -676,7 +683,7 @@ export default function TaskSheet({ project }) {
             <SortableTaskList ids={visibleTaskIds} onMove={handleMove}>
                 {rows.map((r) =>
                     r.kind === "task" ? (
-                        <SortableItem key={r.key} id={r.key} disabled={!r.editable} className={cardClass(r)} draggingClassName="shadow-xl ring-1 ring-blue-500/40">
+                        <SortableItem key={r.key} id={r.key} disabled={!r.editable || !!sort} className={cardClass(r)} draggingClassName="shadow-xl ring-1 ring-blue-500/40">
                             {(handle) => cardContent(r, handle)}
                         </SortableItem>
                     ) : (
@@ -761,6 +768,18 @@ export default function TaskSheet({ project }) {
                         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                 ))}
+                <select
+                    name="sort"
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value)}
+                    aria-label="Sort tasks"
+                    title={sort ? "Switch back to Manual order to drag rows" : undefined}
+                    className={`border outline-none px-3 py-1 rounded text-sm ${sort
+                        ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+                        : "not-dark:bg-white border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-200"}`}
+                >
+                    {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
+                </select>
                 {filtersActive && (
                     <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-purple-400 to-purple-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors">
                         <X className="size-3" /> Reset

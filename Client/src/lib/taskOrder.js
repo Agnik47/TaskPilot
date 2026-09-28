@@ -27,3 +27,20 @@ export function positionForMove(list, activeId, overId) {
     const rest = list.filter((t) => t.id !== activeId);
     return positionBetween(rest[to - 1], rest[to]);
 }
+
+// Optional view sort on top of the manual order. "" keeps the manual order
+// (and drag to reorder); any other value is a read-only view, so ties keep
+// their manual order.
+const PRIORITY_RANK = { URGENT: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
+
+export const SORT_OPTIONS = [
+    { value: "", label: "Manual order" },
+    { value: "priority-desc", label: "Priority: Urgent → Low" },
+    { value: "priority-asc", label: "Priority: Low → Urgent" },
+];
+
+export function sortTasks(tasks, sort) {
+    if (!sort) return tasks;
+    const dir = sort === "priority-asc" ? 1 : -1;
+    return [...tasks].sort((a, b) => dir * ((PRIORITY_RANK[a.priority] ?? 0) - (PRIORITY_RANK[b.priority] ?? 0)));
+}
