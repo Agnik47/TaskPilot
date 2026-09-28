@@ -3,7 +3,8 @@ import { logActivitiesInBackground } from '../services/activity.service.js';
 import { isTaskVisibleTo } from '../services/authorization.service.js';
 import { emitToTask } from '../realtime.js';
 import { notifyInBackground } from '../services/notifications.service.js';
-import { sanitizeMentions } from '../services/mentions.service.js';
+import { involvedPeople, mentionedIds, sanitizeMentions } from '../services/mentions.service.js';
+import { workspaceOwnerIds } from '../services/owners.service.js';
 import { taskAccessSelect } from '../services/taskAccess.service.js';
 
 function checkTaskAccess(req, task) {
@@ -61,7 +62,18 @@ export async function createComment(req, res, next) {
     const error = checkTaskAccess(req, task);
     if (error) return res.status(error).json({ error: error === 404 ? 'NOT_FOUND' : 'FORBIDDEN' });
 
-    const { content: safeContent, mentioned } = sanitizeMentions(content, { task, authorId: req.dbUser.id });
+    // Owners can be mentioned on any task. Only ask Clerk who they are when the
+    // comment mentions someone outside the task, so most comments skip the call.
+    const involvedIds = new Set(involvedPeople(task).map((u) => u.id));
+    const outsiders = mentionedIds(content).filter((id) => !involvedIds.has(id));
+    let owners = [];
+    if (outsiders.length) {
+      const ownerIds = new Set(await workspaceOwnerIds(req.workspaceId));
+      const ids = outsiders.filter((id) => ownerIds.has(id));
+      if (ids.length) owners = await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+    }
+
+    const { content: safeContent, mentioned } = sanitizeMentions(content, { task, authorId: req.dbUser.id, owners });
 
     // No `include: { user }` — the author is the caller, already loaded.
     const created = await prisma.comment.create({

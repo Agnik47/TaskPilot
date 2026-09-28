@@ -39,6 +39,7 @@ const TaskDetails = () => {
     const currentWorkspace = useCurrentWorkspace();
     const { isOwner } = useOrgRole();
     const settings = useSelector((state) => state.workspace.settings);
+    const members = useSelector((state) => state.workspace.members);
     const { setStatus } = useTaskActions();
     const dispatch = useDispatch();
 
@@ -105,18 +106,23 @@ const TaskDetails = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, [comments.length, typingUsers.length]);
 
-    // People who can be @mentioned: those involved in the task (excluding you).
+    // People who can be @mentioned: those involved in the task, plus the
+    // workspace owners, who can always be pulled in (excluding you).
     // Mirrors the server rule in Server/services/mentions.service.js.
     const mentionables = [];
     const involved = [
         [task?.assignee, "Assignee"],
         [task?.creator, "Creator"],
         ...(task?.blockers || []).map((b) => [b.waitingOn, "Waiting on them"]),
+        ...(task?.checklist || []).map((item) => [item.assignee, "Checklist"]),
+        ...members.filter((m) => m.role === "org:admin").map((m) => [m, "Owner"]),
     ];
     for (const [person, label] of involved) {
         if (!person || person.id === user?.id) continue;
         const existing = mentionables.find((m) => m.id === person.id);
-        if (existing) existing.label = `${existing.label} · ${label}`;
+        if (existing) {
+            if (!existing.label.split(" · ").includes(label)) existing.label = `${existing.label} · ${label}`;
+        }
         else mentionables.push({ id: person.id, name: person.name, image: person.image, label });
     }
 
