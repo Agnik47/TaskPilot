@@ -9,6 +9,7 @@ const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
 const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
 const WEEK_STARTS = [0, 1];
 const TASK_VIEWS = ['table', 'board', 'sheet'];
+const APPROVAL_MODES = ['all', 'important', 'none'];
 
 export async function getSettings(req, res, next) {
   try {
@@ -20,7 +21,7 @@ export async function getSettings(req, res, next) {
 
 export async function updateSettings(req, res, next) {
   try {
-    const { defaultTaskPriority, defaultTaskType, weekStartsOn, defaultTaskView, requireApproval } = req.body;
+    const { defaultTaskPriority, defaultTaskType, weekStartsOn, defaultTaskView, requireApproval, approvalFor } = req.body;
     const changes = {};
 
     if (defaultTaskPriority !== undefined) {
@@ -56,6 +57,17 @@ export async function updateSettings(req, res, next) {
         return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'requireApproval must be true or false.' });
       }
       changes.requireApproval = requireApproval;
+      // Older clients only send the on/off switch.
+      if (approvalFor === undefined) changes.approvalFor = requireApproval ? 'all' : 'none';
+    }
+
+    // Takes precedence when both are sent.
+    if (approvalFor !== undefined) {
+      if (!APPROVAL_MODES.includes(approvalFor)) {
+        return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'approvalFor must be "all", "important" or "none".' });
+      }
+      changes.approvalFor = approvalFor;
+      changes.requireApproval = approvalFor !== 'none'; // keep the legacy flag in step
     }
 
     res.json(await saveWorkspaceSettings(req.workspaceId, changes));

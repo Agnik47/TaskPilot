@@ -4,7 +4,7 @@
 //   "Done" becomes IN_REVIEW; an owner then approves it (-> DONE) or requests
 //   changes (-> IN_PROGRESS). Tasks people create for themselves, and anything
 //   an owner completes, skip review. Owners can switch the rule off per
-//   workspace (settings.requireApproval).
+//   workspace: all assigned work, only High & Urgent, or none (settings.approvalFor).
 //
 //   Review is also opt-in: an employee can send any of their tasks (e.g. one
 //   they created themselves) for review by picking "In Review". It then works
@@ -15,10 +15,21 @@
 
 export const STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'IN_REVIEW', 'DONE'];
 
+// 'all' | 'important' | 'none'. Workspaces saved before approvalFor existed
+// only have the on/off requireApproval flag.
+export function approvalMode(settings) {
+  return settings.approvalFor ?? (settings.requireApproval === false ? 'none' : 'all');
+}
+
+const IMPORTANT = ['HIGH', 'URGENT'];
+
 // Assigned by someone else (employees can only assign themselves, so in
-// practice: an owner assigned it) and the workspace requires approval.
+// practice: an owner assigned it) and the workspace requires approval for it
+// — every such task, or only High & Urgent ones.
 export function needsApproval(task, settings) {
-  return settings.requireApproval !== false && task.creatorId !== task.assigneeId;
+  const mode = approvalMode(settings);
+  if (mode === 'none' || task.creatorId === task.assigneeId) return false;
+  return mode === 'all' || IMPORTANT.includes(task.priority);
 }
 
 /**

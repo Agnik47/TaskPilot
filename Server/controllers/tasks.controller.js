@@ -180,6 +180,11 @@ export async function updateTask(req, res, next) {
     if (type !== undefined) data.type = type;
 
     if (priority !== undefined && priority !== existing.priority) {
+      // Priority decides whether finished work needs approval, so the person
+      // doing assigned work can't change it (e.g. to skip review).
+      if (!isOwner(req.orgRole) && existing.creatorId !== req.dbUser.id) {
+        return res.status(403).json({ error: 'FORBIDDEN', message: 'Only an owner can change the priority of a task assigned to you.' });
+      }
       data.priority = priority;
       activities.push({
         type: 'PRIORITY_CHANGED',
@@ -217,7 +222,7 @@ export async function updateTask(req, res, next) {
     let statusNotifications = [];
     if (status !== undefined && status !== existing.status) {
       const settings = await getWorkspaceSettings(req.workspaceId);
-      const subject = { ...existing, assigneeId: data.assigneeId ?? existing.assigneeId };
+      const subject = { ...existing, assigneeId: data.assigneeId ?? existing.assigneeId, priority: data.priority ?? existing.priority };
       const plan = planStatusChange({ task: subject, requested: status, actorIsOwner: isOwner(req.orgRole), settings });
       if (plan.error) return res.status(400).json({ error: 'INVALID_TRANSITION', message: plan.error });
       if (!plan.noop) {

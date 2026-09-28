@@ -6,7 +6,10 @@ import { useState } from "react";
 //
 // A task finished while you're looking at the list stays until you leave, so
 // the row doesn't vanish under your cursor and a mis-click is easy to undo.
-export default function useCompletedTasks(tasks) {
+//
+// `recentDays`: also show work completed in the last N days (the Board keeps a
+// short "recently done" window; lists hide all of it).
+export default function useCompletedTasks(tasks, { recentDays = 0 } = {}) {
     const [showCompleted, setShowCompleted] = useState(false);
     const [kept, setKept] = useState(() => new Set());
     const [prevTasks, setPrevTasks] = useState(tasks);
@@ -20,9 +23,13 @@ export default function useCompletedTasks(tasks) {
         if (finished.length) setKept((ids) => new Set([...ids, ...finished.map((t) => t.id)]));
     }
 
+    // Fixed for the visit, so the window doesn't shift between renders.
+    const [since] = useState(() => Date.now() - recentDays * 24 * 60 * 60 * 1000);
+    const isRecent = (task) => recentDays > 0 && !!task.completedAt && new Date(task.completedAt).getTime() >= since;
+
     const completedCount = tasks.filter((t) => t.status === "DONE").length;
     // `force`: the caller asked for Done work explicitly (e.g. the status filter is "Done").
-    const isShown = (task, force = false) => showCompleted || force || task.status !== "DONE" || kept.has(task.id);
+    const isShown = (task, force = false) => showCompleted || force || task.status !== "DONE" || kept.has(task.id) || isRecent(task);
 
     return { showCompleted, setShowCompleted, completedCount, isShown };
 }

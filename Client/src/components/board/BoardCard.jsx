@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
-import { Bug, CalendarDays, GitCommit, MessageSquare, Square, Zap } from "lucide-react";
+import { formatDistanceToNowStrict } from "date-fns";
+import { Bug, CalendarDays, Clock3, GitCommit, MessageSquare, Square, Zap } from "lucide-react";
 import { dueInfo } from "../../lib/dates";
 import WaitingOnBadge from "../blockers/WaitingOnBadge";
 import ChecklistProgress from "../checklist/ChecklistProgress";
@@ -41,6 +42,13 @@ export default function BoardCard({ task, overlay = false, draggable = true }) {
             </Link>
 
             <WaitingOnBadge task={task} className="mt-2" />
+
+            {/* How long it has sat in review, so stuck reviews stand out. */}
+            {task.status === "IN_REVIEW" && task.submittedAt && (
+                <p className="mt-1.5 flex items-center gap-1 text-[11px] text-violet-700 dark:text-violet-300" title="Waiting for an owner's approval">
+                    <Clock3 className="size-3" /> Waiting {formatDistanceToNowStrict(new Date(task.submittedAt))}
+                </p>
+            )}
 
             {/* Meta chips wrap as a group in narrow columns; each chip stays on one
                 line and the avatar keeps its own slot so nothing collides. */}

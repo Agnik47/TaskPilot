@@ -8,7 +8,8 @@ export const DEFAULT_WORKSPACE_SETTINGS = {
     defaultTaskType: "TASK",
     weekStartsOn: 0,
     defaultTaskView: "table", // "table" | "board" | "sheet"
-    requireApproval: true, // assigned tasks need an owner's approval to be Done
+    requireApproval: true, // legacy switch, read only when approvalFor is unset
+    approvalFor: "all", // which assigned tasks need an owner's approval: "all" | "important" | "none"
 };
 
 const initialState = {

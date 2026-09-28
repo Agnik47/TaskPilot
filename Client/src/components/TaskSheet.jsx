@@ -8,7 +8,7 @@ import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import useCompletedTasks from "../hooks/useCompletedTasks";
 import CompletedToggle from "./CompletedToggle";
-import { statusOptionsFor } from "../lib/taskWorkflow";
+import { canChangePriority, statusOptionsFor } from "../lib/taskWorkflow";
 import { bulkCreateTasks, deleteTask, updateTask } from "../features/workspaceSlice";
 import { ConfirmDialog } from "./settings/SettingsUI";
 import { SORT_OPTIONS, sortByPosition, sortTasks } from "../lib/taskOrder";
@@ -494,7 +494,7 @@ export default function TaskSheet({ project }) {
             disabled: {
                 assigneeId: !isOwner || !canEdit(task),
                 status: !canEdit(task),
-                priority: !canEdit(task),
+                priority: !canEdit(task) || !canChangePriority(task, { isOwner, me }),
                 due_date: !canEdit(task),
                 type: !canEdit(task),
             },

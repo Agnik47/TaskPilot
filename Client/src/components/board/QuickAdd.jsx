@@ -7,9 +7,9 @@ import { STATUS_META } from "../../lib/taskWorkflow";
 
 // "+ Add task" at the bottom of a board column. Type a title and press Enter;
 // the box stays open so several tasks can be added in a row. Esc closes.
-// New tasks use the workspace defaults and are assigned to you; set a due
-// date or assignee afterwards from the task.
-export default function QuickAdd({ projectId, status }) {
+// New tasks use the workspace defaults and are assigned to you (or to
+// `assigneeId`, e.g. in a person's lane); set a due date afterwards.
+export default function QuickAdd({ projectId, status, assigneeId }) {
     const dispatch = useDispatch();
     const { defaultTaskType, defaultTaskPriority } = useSelector((state) => state.workspace.settings);
     const [open, setOpen] = useState(false);
@@ -22,7 +22,7 @@ export default function QuickAdd({ projectId, status }) {
         if (!text || saving) return;
         try {
             setSaving(true);
-            await dispatch(createTask({ projectId, title: text, status, type: defaultTaskType, priority: defaultTaskPriority })).unwrap();
+            await dispatch(createTask({ projectId, title: text, status, type: defaultTaskType, priority: defaultTaskPriority, ...(assigneeId ? { assigneeId } : {}) })).unwrap();
             setTitle("");
             requestAnimationFrame(() => inputRef.current?.focus());
         } catch (error) {

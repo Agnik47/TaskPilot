@@ -10,7 +10,10 @@ export const DEFAULT_SETTINGS = {
   defaultTaskType: 'TASK',
   weekStartsOn: 0, // 0 = Sunday, 1 = Monday
   defaultTaskView: 'table', // 'table' | 'board' | 'sheet' — how a project's tasks open
-  requireApproval: true, // tasks assigned by someone else need an owner to approve completion
+  requireApproval: true, // legacy on/off switch, read only when approvalFor is unset
+  // Which assigned tasks need an owner to approve completion:
+  // 'all' | 'important' (High & Urgent only) | 'none'. See approvalMode().
+  approvalFor: undefined,
 };
 
 const CACHE_TTL_MS = 60 * 1000;

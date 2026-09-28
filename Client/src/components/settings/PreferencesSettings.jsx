@@ -5,7 +5,8 @@ import toast from "react-hot-toast";
 import { errorMessage } from "../../lib/errors";
 import useOrgRole from "../../hooks/useOrgRole";
 import { updateWorkspaceSettings } from "../../features/workspaceSlice";
-import { SectionHeader, SettingsCard, FieldRow, ReadOnlyNotice, Toggle, inputClass, primaryButtonClass, secondaryButtonClass } from "./SettingsUI";
+import { approvalMode } from "../../lib/taskWorkflow";
+import { SectionHeader, SettingsCard, FieldRow, ReadOnlyNotice, inputClass, primaryButtonClass, secondaryButtonClass } from "./SettingsUI";
 
 const PRIORITY_OPTIONS = [
     { value: "LOW", label: "Low" },
@@ -22,19 +23,28 @@ const TYPE_OPTIONS = [
     { value: "OTHER", label: "Other" },
 ];
 
+const APPROVAL_OPTIONS = [
+    { value: "all", label: "All assigned tasks", hint: "Every task an owner assigns is reviewed before it's Done." },
+    { value: "important", label: "High & Urgent only", hint: "High and Urgent tasks are reviewed. Low and Medium tasks close as soon as they're done." },
+    { value: "none", label: "Off", hint: "People close their tasks themselves. Nothing waits for review." },
+];
+
 export default function PreferencesSettings() {
     const settings = useSelector((state) => state.workspace.settings);
     const { isOwner } = useOrgRole();
     const dispatch = useDispatch();
 
-    const [form, setForm] = useState(settings);
+    // Older workspaces only have requireApproval; show it as the matching mode.
+    const withMode = (s) => ({ ...s, approvalFor: approvalMode(s) });
+    const [form, setForm] = useState(() => withMode(settings));
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
-        setForm(settings);
+        setForm(withMode(settings));
     }, [settings]);
 
-    const isDirty = Object.keys(settings).some((key) => settings[key] !== form[key]);
+    const saved = withMode(settings);
+    const isDirty = Object.keys(form).some((key) => saved[key] !== form[key]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -76,11 +86,26 @@ export default function PreferencesSettings() {
                     title="Task approval"
                     description="When an owner assigns a task, marking it Done sends it to review instead of closing it. Owners approve it or send it back with notes."
                 >
-                    <FieldRow label="Require approval" help="Tasks people create for themselves, and anything an owner completes, never need approval.">
-                        <div className="flex items-center gap-3 py-1">
-                            <Toggle checked={form.requireApproval !== false} onChange={(v) => setForm({ ...form, requireApproval: v })} disabled={!isOwner} label="Require approval for assigned tasks" />
-                            <span className="text-sm text-zinc-600 dark:text-zinc-400">{form.requireApproval !== false ? "On — assigned work is reviewed before it's Done" : "Off — assignees can close tasks themselves"}</span>
+                    <FieldRow
+                        label="Require approval for"
+                        help="Tasks people create for themselves, and anything an owner completes, never need approval. Anyone can still send a task for review on their own."
+                    >
+                        <div role="radiogroup" aria-label="Require approval for" className="inline-flex flex-wrap rounded-md border border-zinc-300 dark:border-zinc-700 overflow-hidden">
+                            {APPROVAL_OPTIONS.map((o) => (
+                                <button
+                                    key={o.value}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={form.approvalFor === o.value}
+                                    disabled={!isOwner}
+                                    onClick={() => setForm({ ...form, approvalFor: o.value, requireApproval: o.value !== "none" })}
+                                    className={`px-4 py-2 text-sm transition disabled:cursor-not-allowed ${form.approvalFor === o.value ? "bg-blue-600 text-white" : "bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+                                >
+                                    {o.label}
+                                </button>
+                            ))}
                         </div>
+                        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">{APPROVAL_OPTIONS.find((o) => o.value === form.approvalFor)?.hint}</p>
                     </FieldRow>
                 </SettingsCard>
 

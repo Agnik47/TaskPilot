@@ -13,9 +13,21 @@ export const STATUS_META = {
 // Work that's finished from the assignee's side (not "pending" for them).
 export const isSettled = (status) => status === "DONE" || status === "IN_REVIEW";
 
-export function needsApproval(task, settings) {
-    return settings?.requireApproval !== false && task.creatorId !== task.assigneeId;
+// 'all' | 'important' (High & Urgent only) | 'none'. Workspaces saved before
+// approvalFor existed only have the on/off requireApproval flag.
+export function approvalMode(settings) {
+    return settings?.approvalFor ?? (settings?.requireApproval === false ? "none" : "all");
 }
+
+export function needsApproval(task, settings) {
+    const mode = approvalMode(settings);
+    if (mode === "none" || task.creatorId === task.assigneeId) return false;
+    return mode === "all" || task.priority === "HIGH" || task.priority === "URGENT";
+}
+
+// Priority decides whether finished work needs approval, so only owners and
+// the task's creator can change it (mirrors the server).
+export const canChangePriority = (task, { isOwner, me }) => isOwner || task.creatorId === me;
 
 // Employees can send work for review even when it doesn't need approval
 // (e.g. a task they created themselves); owners are the reviewers.
