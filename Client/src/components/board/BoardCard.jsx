@@ -42,26 +42,30 @@ export default function BoardCard({ task, overlay = false, draggable = true }) {
 
             <WaitingOnBadge task={task} className="mt-2" />
 
-            <div className="flex items-center gap-2 mt-2.5">
-                <type.icon className={`size-3.5 shrink-0 ${type.cls}`} aria-label={task.type} />
-                <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide ${PRIORITY[task.priority] || PRIORITY.MEDIUM}`}>
-                    {task.priority}
-                </span>
-                {due && (
-                    <span
-                        className={`inline-flex items-center gap-1 text-xs ${due.overdue ? "text-red-600 dark:text-red-400 font-medium" : due.soon ? "text-amber-700 dark:text-amber-300" : "text-zinc-500 dark:text-zinc-400"}`}
-                        title={due.overdue ? "Overdue" : "Due date"}
-                    >
-                        <CalendarDays className="size-3.5" /> {due.label}
+            {/* Meta chips wrap as a group in narrow columns; each chip stays on one
+                line and the avatar keeps its own slot so nothing collides. */}
+            <div className="flex items-end gap-2 mt-2.5">
+                <div className="flex flex-1 min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1.5">
+                    <type.icon className={`size-3.5 shrink-0 ${type.cls}`} aria-label={task.type} />
+                    <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] leading-4 font-semibold uppercase tracking-wide ${PRIORITY[task.priority] || PRIORITY.MEDIUM}`}>
+                        {task.priority}
                     </span>
-                )}
-                <ChecklistProgress task={task} />
+                    {due && (
+                        <span
+                            className={`inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap ${due.overdue ? "text-red-600 dark:text-red-400 font-medium" : due.soon ? "text-amber-700 dark:text-amber-300" : "text-zinc-500 dark:text-zinc-400"}`}
+                            title={due.overdue ? "Overdue" : "Due date"}
+                        >
+                            <CalendarDays className="size-3.5 shrink-0" /> {due.label}
+                        </span>
+                    )}
+                    <ChecklistProgress task={task} className="shrink-0" />
+                </div>
                 {task.assignee && (
                     <img
                         src={task.assignee.image}
                         alt={task.assignee.name}
                         title={task.assignee.name}
-                        className="size-6 rounded-full ml-auto bg-zinc-200 dark:bg-zinc-700 ring-2 ring-white dark:ring-zinc-950"
+                        className="size-6 shrink-0 rounded-full bg-zinc-200 dark:bg-zinc-700 ring-2 ring-white dark:ring-zinc-950"
                     />
                 )}
             </div>

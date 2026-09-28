@@ -293,7 +293,7 @@ function BoardColumn({ status, count, dimmed, footer, children }) {
                 <span className="text-xs text-zinc-400 tabular-nums">{count}</span>
                 {dimmed && <Ban className="size-3.5 ml-auto text-zinc-400" aria-label="Can't move here" />}
             </header>
-            <div ref={setNodeRef} className="flex-1 flex flex-col gap-2 px-2 pb-1 min-h-24 max-h-[65vh] overflow-y-auto">
+            <div ref={setNodeRef} className="flex-1 flex flex-col gap-2 px-2 pb-1 min-h-24 max-h-[65vh] overflow-y-auto overflow-x-hidden">
                 {children}
             </div>
             <div className="px-2 pb-2">{footer}</div>
