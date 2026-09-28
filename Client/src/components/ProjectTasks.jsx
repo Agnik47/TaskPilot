@@ -7,6 +7,8 @@ import { useUser } from "@clerk/clerk-react";
 import { deleteTask } from "../features/workspaceSlice";
 import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
+import useCompletedTasks from "../hooks/useCompletedTasks";
+import CompletedToggle from "./CompletedToggle";
 import { statusOptionsFor } from "../lib/taskWorkflow";
 import { SORT_OPTIONS, sortByPosition, sortTasks } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
@@ -51,6 +53,8 @@ const ProjectTasks = ({ tasks }) => {
         assignee: "",
     });
 
+    const { showCompleted, setShowCompleted, completedCount, isShown } = useCompletedTasks(tasks);
+
     // A sorted view can't be dragged: the order shown isn't the stored order.
     const [sort, setSort] = useState("");
 
@@ -66,10 +70,11 @@ const ProjectTasks = ({ tasks }) => {
                 (!status || task.status === status) &&
                 (!type || task.type === type) &&
                 (!priority || task.priority === priority) &&
-                (!assignee || task.assignee?.name === assignee)
+                (!assignee || task.assignee?.name === assignee) &&
+                isShown(task, status === "DONE")
             );
         }), sort);
-    }, [filters, tasks, sort]);
+    }, [filters, tasks, sort, isShown]);
 
     const handleFilterChange = (e) => {
         const { name, value } = e.target;
@@ -83,6 +88,10 @@ const ProjectTasks = ({ tasks }) => {
     };
 
     const filteredIds = filteredTasks.map((t) => t.id);
+    const hiddenCompleted = !showCompleted && filters.status !== "DONE" && completedCount > 0;
+    const emptyMessage = hiddenCompleted && tasks.every((t) => t.status === "DONE")
+        ? "All caught up. Every task here is done."
+        : hiddenCompleted ? "No open tasks match these filters. Completed tasks are hidden." : "No tasks found for the selected filters.";
     const handleMove = (activeId, overId) => move(filteredTasks, activeId, overId);
     const dueLabel = (task) => (task.due_date ? format(new Date(task.due_date), "dd MMMM") : "No due date");
 
@@ -158,6 +167,8 @@ const ProjectTasks = ({ tasks }) => {
                     {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
                 </select>
 
+                <CompletedToggle shown={showCompleted} count={completedCount} onChange={setShowCompleted} />
+
                 {/* Reset filters */}
                 {(filters.status || filters.type || filters.priority || filters.assignee) && (
                     <button type="button" onClick={() => setFilters({ status: "", type: "", priority: "", assignee: "" })} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-purple-400 to-purple-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors" >
@@ -182,7 +193,7 @@ const ProjectTasks = ({ tasks }) => {
                                 <tr>
                                     <th className="w-7 pl-1" aria-label="Reorder" />
                                     <th className="pl-1 pr-1">
-                                        <input onChange={() => selectedTasks.length > 1 ? setSelectedTasks([]) : setSelectedTasks(tasks.map((t) => t.id))} checked={selectedTasks.length === tasks.length} type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" />
+                                        <input onChange={() => selectedTasks.length > 1 ? setSelectedTasks([]) : setSelectedTasks(filteredIds)} checked={filteredIds.length > 0 && selectedTasks.length === filteredIds.length} type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" />
                                     </th>
                                     <th className="px-4 pl-0 py-3">Title</th>
                                     <th className="px-4 py-3">Type</th>
@@ -256,7 +267,7 @@ const ProjectTasks = ({ tasks }) => {
                                 ) : (
                                     <tr>
                                         <td colSpan="8" className="text-center text-zinc-500 dark:text-zinc-400 py-6">
-                                            No tasks found for the selected filters.
+                                            {emptyMessage}
                                         </td>
                                     </tr>
                                 )}
@@ -325,7 +336,7 @@ const ProjectTasks = ({ tasks }) => {
                             </SortableTaskList>
                         ) : (
                             <p className="text-center text-zinc-500 dark:text-zinc-400 py-4">
-                                No tasks found for the selected filters.
+                                {emptyMessage}
                             </p>
                         )}
                     </div>

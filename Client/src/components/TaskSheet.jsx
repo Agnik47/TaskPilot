@@ -6,6 +6,8 @@ import toast from "react-hot-toast";
 import { AlignLeft, ArrowUpRight, Bug, GitCommit, Loader2Icon, MessageSquare, Plus, Square, Trash2, X, Zap } from "lucide-react";
 import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
+import useCompletedTasks from "../hooks/useCompletedTasks";
+import CompletedToggle from "./CompletedToggle";
 import { statusOptionsFor } from "../lib/taskWorkflow";
 import { bulkCreateTasks, deleteTask, updateTask } from "../features/workspaceSlice";
 import { ConfirmDialog } from "./settings/SettingsUI";
@@ -144,6 +146,8 @@ export default function TaskSheet({ project }) {
     const filtersActive = Object.values(filters).some(Boolean);
     // A sorted view can't be dragged: the order shown isn't the stored order.
     const [sort, setSort] = useState("");
+    const { showCompleted, setShowCompleted, completedCount, isShown } = useCompletedTasks(tasks);
+    const hiddenCompleted = !showCompleted && filters.status !== "DONE" ? completedCount : 0;
     const assigneeFilterOptions = useMemo(() => {
         const byId = new Map();
         tasks.forEach((t) => t.assignee && byId.set(t.assignee.id, t.assignee.name));
@@ -156,9 +160,10 @@ export default function TaskSheet({ project }) {
                 (!filters.status || t.status === filters.status) &&
                 (!filters.type || t.type === filters.type) &&
                 (!filters.priority || t.priority === filters.priority) &&
-                (!filters.assigneeId || t.assigneeId === filters.assigneeId)
+                (!filters.assigneeId || t.assigneeId === filters.assigneeId) &&
+                isShown(t, filters.status === "DONE")
             ), sort),
-        [tasks, filters, sort]
+        [tasks, filters, sort, isShown]
     );
     const visibleTaskIds = visibleTasks.map((t) => t.id);
     const handleMove = (activeId, overId) => move(visibleTasks, activeId, overId);
@@ -664,7 +669,9 @@ export default function TaskSheet({ project }) {
                     </p>
                 ) : visibleTasks.length === 0 && (
                     <p className="px-4 py-6 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                        No tasks found for the selected filters.
+                        {hiddenCompleted && tasks.every((t) => t.status === "DONE")
+                            ? "All caught up. Every task here is done."
+                            : hiddenCompleted ? "No open tasks match these filters. Completed tasks are hidden." : "No tasks found for the selected filters."}
                     </p>
                 )}
             </div>
@@ -780,6 +787,7 @@ export default function TaskSheet({ project }) {
                 >
                     {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
                 </select>
+                <CompletedToggle shown={showCompleted} count={completedCount} onChange={setShowCompleted} />
                 {filtersActive && (
                     <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-purple-400 to-purple-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors">
                         <X className="size-3" /> Reset
@@ -790,7 +798,8 @@ export default function TaskSheet({ project }) {
             {/* Toolbar */}
             <div className="flex flex-wrap items-center gap-2 mb-3">
                 <p className="text-sm text-zinc-500 dark:text-zinc-400 mr-auto">
-                    {filtersActive && `${visibleTasks.length} of `}{tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                    {(filtersActive || hiddenCompleted > 0) && `${visibleTasks.length} of `}{tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+                    {hiddenCompleted > 0 && <span className="text-zinc-400 dark:text-zinc-500"> · {hiddenCompleted} completed hidden</span>}
                 </p>
                 {wide && (
                     <>
