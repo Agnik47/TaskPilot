@@ -68,16 +68,16 @@ export default function Checklist({ task, me, canEdit }) {
 
     return (
         <section aria-label="Checklist">
-            <div className="flex items-center gap-2 mb-2">
+            <div className="flex items-center gap-2 mb-3">
                 <ListChecks className="size-4 text-zinc-500 dark:text-zinc-400" />
-                <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">Checklist</h2>
+                <h2 className="text-sm font-semibold text-zinc-900 dark:text-white">Checklist</h2>
                 {total > 0 && (
-                    <span className={`text-xs tabular-nums ${complete ? "text-emerald-600 dark:text-emerald-400" : "text-zinc-500 dark:text-zinc-400"}`}>
+                    <span className={`h-5 px-1.5 inline-flex items-center rounded-full text-[11px] font-medium tabular-nums ${complete ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"}`}>
                         {done} of {total}
                     </span>
                 )}
                 {done > 0 && (
-                    <button type="button" onClick={toggleHideDone} className="ml-auto inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200">
+                    <button type="button" onClick={toggleHideDone} className="ml-auto shrink-0 inline-flex items-center gap-1 h-6 px-1.5 -mr-1.5 rounded-md text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 hover:bg-zinc-100 dark:hover:text-zinc-200 dark:hover:bg-zinc-800 transition-colors">
                         {hideDone ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
                         {hideDone ? `Show completed (${done})` : "Hide completed"}
                     </button>
@@ -85,7 +85,7 @@ export default function Checklist({ task, me, canEdit }) {
             </div>
 
             {total > 0 && (
-                <div className="h-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden mb-2" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+                <div className="h-1 rounded-full bg-zinc-100 dark:bg-zinc-800 overflow-hidden mb-3" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
                     <div className={`h-full rounded-full transition-all duration-300 ${complete ? "bg-emerald-500" : "bg-blue-500"}`} style={{ width: `${(done / total) * 100}%` }} />
                 </div>
             )}
@@ -111,7 +111,7 @@ export default function Checklist({ task, me, canEdit }) {
             </SortableTaskList>
 
             {hideDone && done > 0 && visible.length === 0 && (
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 py-1">All {done} items done.</p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400 py-1 pl-[22px]">All {done} items done.</p>
             )}
 
             {canEdit && <AddItem onAdd={add} empty={total === 0} />}
@@ -131,7 +131,7 @@ function ChecklistRow({ item, handle, canEdit, canToggle, peopleOptions, onUpdat
     };
 
     return (
-        <div className="flex items-start gap-1.5 px-1.5 py-1 rounded-md hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
+        <div className="flex items-start gap-1.5 px-1.5 py-1.5 rounded-md transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800/50">
             <span className="w-5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity -ml-1">{handle}</span>
             <input
                 type="checkbox"
@@ -168,13 +168,13 @@ function ChecklistRow({ item, handle, canEdit, canToggle, peopleOptions, onUpdat
                             setEditing(true);
                         }}
                         title={canEdit ? "Click to rename" : undefined}
-                        className={`block w-full text-left text-sm py-0.5 break-words disabled:cursor-default ${item.done ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-200"}`}
+                        className={`block w-full text-left text-sm leading-5 py-0.5 break-words disabled:cursor-default ${item.done ? "line-through text-zinc-400 dark:text-zinc-500" : "text-zinc-800 dark:text-zinc-200"}`}
                     >
                         {item.title}
                     </button>
                 )}
                 {item.done && item.doneBy && (
-                    <p className="text-[11px] text-zinc-400 dark:text-zinc-500">Done by {item.doneBy.name}</p>
+                    <p className="text-[11px] leading-4 text-zinc-400 dark:text-zinc-500">Done by {item.doneBy.name}</p>
                 )}
             </div>
 
@@ -250,8 +250,8 @@ function AddItem({ onAdd, empty }) {
     };
 
     return (
-        <div className="flex items-center gap-2 mt-1 px-0.5">
-            {saving ? <Loader2Icon className="size-4 shrink-0 text-zinc-400 animate-spin" /> : <Plus className="size-4 shrink-0 text-zinc-400" />}
+        <div className="group/add flex items-center gap-1.5 mt-1 pl-[22px] rounded-md">
+            {saving ? <Loader2Icon className="size-4 shrink-0 text-zinc-400 animate-spin" /> : <Plus className="size-4 shrink-0 text-zinc-400 group-focus-within/add:text-blue-500 transition-colors" />}
             <input
                 ref={inputRef}
                 value={text}
@@ -272,7 +272,7 @@ function AddItem({ onAdd, empty }) {
                 maxLength={300}
                 placeholder={empty ? "Break this task into steps. Type one and press Enter, or paste a list" : "Add an item"}
                 aria-label="Add a checklist item"
-                className="flex-1 min-w-0 h-8 bg-transparent text-sm outline-none placeholder-zinc-400 border-b border-transparent focus:border-zinc-300 dark:focus:border-zinc-700"
+                className="flex-1 min-w-0 h-8 bg-transparent text-sm outline-none placeholder:text-zinc-400 hover:placeholder:text-zinc-500 border-b border-transparent focus:border-zinc-200 dark:focus:border-zinc-700 transition-colors"
             />
         </div>
     );
