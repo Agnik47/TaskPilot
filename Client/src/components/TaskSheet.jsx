@@ -16,6 +16,8 @@ import { SortableItem, SortableTaskList } from "./SortableTasks";
 import WaitingOnBadge from "./blockers/WaitingOnBadge";
 import ChecklistProgress from "./checklist/ChecklistProgress";
 import CellSelect from "./sheet/CellSelect";
+import FilterSelect from "./FilterSelect";
+import { peopleOptions } from "../lib/people";
 import DateCell from "./sheet/DateCell";
 import {
     PASTE_ORDER,
@@ -149,10 +151,8 @@ export default function TaskSheet({ project }) {
     const { showCompleted, setShowCompleted, completedCount, isShown } = useCompletedTasks(tasks);
     const hiddenCompleted = !showCompleted && filters.status !== "DONE" ? completedCount : 0;
     const assigneeFilterOptions = useMemo(() => {
-        const byId = new Map();
-        tasks.forEach((t) => t.assignee && byId.set(t.assignee.id, t.assignee.name));
-        return [...byId].map(([value, label]) => ({ value, label }));
-    }, [tasks]);
+        return peopleOptions(tasks.map((t) => t.assignee).filter(Boolean), me);
+    }, [tasks, me]);
     // Existing tasks shown in the grid; drafts are never filtered out.
     const visibleTasks = useMemo(
         () =>
@@ -389,7 +389,7 @@ export default function TaskSheet({ project }) {
     // ---- field editors (shared by grid cells and card chips) ----
     const assigneeOptions = (currentAssignee) => {
         const list = currentAssignee && !people.some((p) => p.id === currentAssignee.id) ? [currentAssignee, ...people] : people;
-        return list.map((p) => ({ value: p.id, label: p.name, image: p.image || "", hint: p.id === me ? "You" : undefined }));
+        return peopleOptions(list, me);
     };
 
     // variant: "cell" (grid) or "chip" (cards)
@@ -411,7 +411,8 @@ export default function TaskSheet({ project }) {
                         onChange={(v) => onChange("assigneeId", v)}
                         disabled={disabled.assigneeId}
                         searchable={options.length > 6}
-                        menuWidth={240}
+                        searchPlaceholder="Search people by name or email…"
+                        menuWidth={280}
                         className={cell ? "w-full h-10 px-3" : chipClass}
                         renderValue={(o) =>
                             o ? (
@@ -757,36 +758,39 @@ export default function TaskSheet({ project }) {
     return (
         <div ref={containerRef} className={!wide && hasUnsaved ? "pb-20" : ""}>
             {/* Filters */}
-            <div className="flex flex-wrap gap-4 mb-4">
+            <div className="flex flex-wrap items-center gap-2 mb-4">
                 {[
-                    ["status", "All Statuses", STATUS_FILTER_OPTIONS],
-                    ["type", "All Types", TYPE_OPTIONS],
-                    ["priority", "All Priorities", PRIORITY_OPTIONS],
-                    ["assigneeId", "All Assignees", assigneeFilterOptions],
-                ].map(([name, allLabel, options]) => (
-                    <select
+                    ["status", "Status", "All statuses", STATUS_FILTER_OPTIONS],
+                    ["type", "Type", "All types", TYPE_OPTIONS],
+                    ["priority", "Priority", "All priorities", PRIORITY_OPTIONS],
+                ].map(([name, label, allLabel, options]) => (
+                    <FilterSelect
                         key={name}
-                        name={name}
+                        label={label}
                         value={filters[name]}
-                        onChange={(e) => setFilters((prev) => ({ ...prev, [name]: e.target.value }))}
-                        className="border not-dark:bg-white border-zinc-300 dark:border-zinc-800 outline-none px-3 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200"
-                    >
-                        <option value="">{allLabel}</option>
-                        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                    </select>
+                        options={[{ value: "", label: allLabel }, ...options]}
+                        onChange={(v) => setFilters((prev) => ({ ...prev, [name]: v }))}
+                    />
                 ))}
-                <select
-                    name="sort"
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                    aria-label="Sort tasks"
-                    title={sort ? "Switch back to Manual order to drag rows" : undefined}
-                    className={`border outline-none px-3 py-1 rounded text-sm ${sort
-                        ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
-                        : "not-dark:bg-white border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-200"}`}
-                >
-                    {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
-                </select>
+                <FilterSelect
+                    label="Assignee"
+                    value={filters.assigneeId}
+                    options={[{ value: "", label: "All assignees" }, ...assigneeFilterOptions]}
+                    onChange={(v) => setFilters((prev) => ({ ...prev, assigneeId: v }))}
+                    searchPlaceholder="Search people by name or email…"
+                    menuWidth={280}
+                    showImage
+                />
+                <span title={sort ? "Switch back to Manual order to drag rows" : undefined}>
+                    <FilterSelect
+                        label="Sort"
+                        value={sort}
+                        options={SORT_OPTIONS}
+                        onChange={setSort}
+                        inactiveLabel={`Sort: ${SORT_OPTIONS.find((o) => o.value === "")?.label ?? "Manual order"}`}
+                        menuWidth={240}
+                    />
+                </span>
                 <CompletedToggle shown={showCompleted} count={completedCount} onChange={setShowCompleted} />
                 {filtersActive && (
                     <button type="button" onClick={() => setFilters(EMPTY_FILTERS)} className="px-3 py-1 flex items-center gap-2 rounded bg-gradient-to-br from-purple-400 to-purple-500 text-zinc-100 dark:text-zinc-200 text-sm transition-colors">

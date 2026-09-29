@@ -6,6 +6,7 @@ import { addChecklistItems, deleteChecklistItem, fetchMembers, updateChecklistIt
 import { checklistOf, checklistProgress, splitItemLines } from "../../lib/checklist";
 import { positionForMove } from "../../lib/taskOrder";
 import { dueDateToInput } from "../../lib/sheet";
+import { peopleOptions as toPeopleOptions } from "../../lib/people";
 import { SortableItem, SortableTaskList } from "../SortableTasks";
 import CellSelect from "../sheet/CellSelect";
 import DateCell from "../sheet/DateCell";
@@ -63,7 +64,7 @@ export default function Checklist({ task, me, canEdit }) {
 
     const peopleOptions = [
         { value: "", label: "No owner" },
-        ...members.map((m) => ({ value: m.id, label: m.name, image: m.image || "", hint: m.id === me ? "You" : undefined })),
+        ...toPeopleOptions(members, me),
     ];
 
     return (
@@ -201,8 +202,9 @@ function ChecklistRow({ item, handle, canEdit, canToggle, peopleOptions, onUpdat
                             onChange={(v) => onUpdate({ assigneeId: v || null })}
                             disabled={!canEdit}
                             searchable={peopleOptions.length > 6}
+                            searchPlaceholder="Search people by name or email…"
                             hideChevron
-                            menuWidth={240}
+                            menuWidth={280}
                             className="h-7 px-1 rounded hover:bg-white dark:hover:bg-zinc-800"
                             renderValue={() =>
                                 item.assignee ? (

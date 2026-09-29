@@ -9,6 +9,8 @@ import useOrgRole from "../hooks/useOrgRole";
 import useTaskActions from "../hooks/useTaskActions";
 import useCompletedTasks from "../hooks/useCompletedTasks";
 import CompletedToggle from "./CompletedToggle";
+import FilterSelect from "./FilterSelect";
+import { peopleOptions } from "../lib/people";
 import { statusOptionsFor } from "../lib/taskWorkflow";
 import { SORT_OPTIONS, sortByPosition, sortTasks } from "../lib/taskOrder";
 import { SortableItem, SortableTaskList } from "./SortableTasks";
@@ -58,9 +60,10 @@ const ProjectTasks = ({ tasks }) => {
     // A sorted view can't be dragged: the order shown isn't the stored order.
     const [sort, setSort] = useState("");
 
-    const assigneeList = useMemo(
-        () => Array.from(new Set(tasks.map((t) => t.assignee?.name).filter(Boolean))),
-        [tasks]
+    // The table filters by name, so people are keyed by name here.
+    const assigneeOptions = useMemo(
+        () => peopleOptions(tasks.map((t) => t.assignee).filter(Boolean), user?.id, { value: (p) => p.name }),
+        [tasks, user?.id]
     );
 
     const filteredTasks = useMemo(() => {
@@ -75,11 +78,6 @@ const ProjectTasks = ({ tasks }) => {
             );
         }), sort);
     }, [filters, tasks, sort, isShown]);
-
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFilters((prev) => ({ ...prev, [name]: value }));
-    };
 
     // Optimistic and approval-aware (an employee's "Done" becomes "In Review").
     const handleStatusChange = (taskId, newStatus) => {
@@ -114,58 +112,57 @@ const ProjectTasks = ({ tasks }) => {
     return (
         <div>
             {/* Filters */}
-            <div className="flex flex-wrap gap-4 mb-4">
-                {["status", "type", "priority", "assignee"].map((name) => {
-                    const options = {
-                        status: [
-                            { label: "All Statuses", value: "" },
-                            { label: "To Do", value: "TODO" },
-                            { label: "In Progress", value: "IN_PROGRESS" },
-                            { label: "Blocked", value: "BLOCKED" },
-                            { label: "In Review", value: "IN_REVIEW" },
-                            { label: "Done", value: "DONE" },
-                        ],
-                        type: [
-                            { label: "All Types", value: "" },
-                            { label: "Task", value: "TASK" },
-                            { label: "Bug", value: "BUG" },
-                            { label: "Feature", value: "FEATURE" },
-                            { label: "Improvement", value: "IMPROVEMENT" },
-                            { label: "Other", value: "OTHER" },
-                        ],
-                        priority: [
-                            { label: "All Priorities", value: "" },
-                            { label: "Low", value: "LOW" },
-                            { label: "Medium", value: "MEDIUM" },
-                            { label: "High", value: "HIGH" },
-                            { label: "Urgent", value: "URGENT" },
-                        ],
-                        assignee: [
-                            { label: "All Assignees", value: "" },
-                            ...assigneeList.map((n) => ({ label: n, value: n })),
-                        ],
-                    };
-                    return (
-                        <select key={name} name={name} onChange={handleFilterChange} className=" border not-dark:bg-white border-zinc-300 dark:border-zinc-800 outline-none px-3 py-1 rounded text-sm text-zinc-900 dark:text-zinc-200" >
-                            {options[name].map((opt, idx) => (
-                                <option key={idx} value={opt.value}>{opt.label}</option>
-                            ))}
-                        </select>
-                    );
-                })}
+            <div className="flex flex-wrap items-center gap-2 mb-4">
+                {[
+                    ["status", "Status", "All statuses", [
+                        { label: "To Do", value: "TODO" },
+                        { label: "In Progress", value: "IN_PROGRESS" },
+                        { label: "Blocked", value: "BLOCKED" },
+                        { label: "In Review", value: "IN_REVIEW" },
+                        { label: "Done", value: "DONE" },
+                    ]],
+                    ["type", "Type", "All types", [
+                        { label: "Task", value: "TASK" },
+                        { label: "Bug", value: "BUG" },
+                        { label: "Feature", value: "FEATURE" },
+                        { label: "Improvement", value: "IMPROVEMENT" },
+                        { label: "Other", value: "OTHER" },
+                    ]],
+                    ["priority", "Priority", "All priorities", [
+                        { label: "Low", value: "LOW" },
+                        { label: "Medium", value: "MEDIUM" },
+                        { label: "High", value: "HIGH" },
+                        { label: "Urgent", value: "URGENT" },
+                    ]],
+                ].map(([name, label, allLabel, options]) => (
+                    <FilterSelect
+                        key={name}
+                        label={label}
+                        value={filters[name]}
+                        options={[{ value: "", label: allLabel }, ...options]}
+                        onChange={(v) => setFilters((prev) => ({ ...prev, [name]: v }))}
+                    />
+                ))}
+                <FilterSelect
+                    label="Assignee"
+                    value={filters.assignee}
+                    options={[{ value: "", label: "All assignees" }, ...assigneeOptions]}
+                    onChange={(v) => setFilters((prev) => ({ ...prev, assignee: v }))}
+                    searchPlaceholder="Search people by name or email…"
+                    menuWidth={280}
+                    showImage
+                />
 
-                <select
-                    name="sort"
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value)}
-                    aria-label="Sort tasks"
-                    title={sort ? "Switch back to Manual order to drag rows" : undefined}
-                    className={`border outline-none px-3 py-1 rounded text-sm ${sort
-                        ? "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
-                        : "not-dark:bg-white border-zinc-300 dark:border-zinc-800 text-zinc-900 dark:text-zinc-200"}`}
-                >
-                    {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
-                </select>
+                <span title={sort ? "Switch back to Manual order to drag rows" : undefined}>
+                    <FilterSelect
+                        label="Sort"
+                        value={sort}
+                        options={SORT_OPTIONS}
+                        onChange={setSort}
+                        inactiveLabel={`Sort: ${SORT_OPTIONS.find((o) => o.value === "")?.label ?? "Manual order"}`}
+                        menuWidth={240}
+                    />
+                </span>
 
                 <CompletedToggle shown={showCompleted} count={completedCount} onChange={setShowCompleted} />
 
