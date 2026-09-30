@@ -71,12 +71,13 @@ export const BOARD_COLUMNS = ["TODO", "IN_PROGRESS", "BLOCKED", "IN_REVIEW", "DO
 // The status to request when a task is dropped on a board column, or null if
 // it can't go there. Dropping on "In Review" means "I'm done, please review":
 // a Done request for work that needs sign-off, an opt-in review otherwise.
-// Owners are the reviewers, so they can't drop there.
+// Owners are the reviewers, so they can't drop there. Only owners can drop on
+// "Done"; employees finish work by dropping it on "In Review".
 export function boardTargetStatus(task, column, { isOwner, settings }) {
     if (column === task.status) return column;
     const approval = !isOwner && needsApproval(task, settings);
     if (approval && task.status === "DONE") return null; // approved: only an owner can reopen
-    if (!isOwner && task.status === "IN_REVIEW" && column === "DONE") return null; // only an owner approves
+    if (!isOwner && column === "DONE") return null; // only an owner moves work to Done
     if (column === "IN_REVIEW") return isOwner ? null : approval ? "DONE" : "IN_REVIEW";
     return column;
 }

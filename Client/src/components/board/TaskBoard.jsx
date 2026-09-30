@@ -38,7 +38,7 @@ import QuickAdd from "./QuickAdd";
 const COLUMN_HINTS = {
     IN_REVIEW: "Finished work waiting for an owner's approval, oldest first. Drop your task here to ask for a review",
     BLOCKED: "Waiting on someone or something",
-    DONE: "Completed in the last 7 days, newest first",
+    DONE: "Completed in the last 7 days, newest first. Only owners can move tasks here",
 };
 // Blocked needs a person and reason (the dialog), In Review/Done are reached by
 // finishing work, so quick add lives only where new work starts.
