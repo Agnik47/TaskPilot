@@ -9,7 +9,9 @@ import useOrgRole from "../hooks/useOrgRole";
 import { createTask } from "../features/workspaceSlice";
 import OpenSound from "./OpenSound";
 
-export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, projectId }) {
+// `initialDueDate` ("yyyy-MM-dd", optional) prefills the due date, e.g. when
+// the dialog is opened from a day on the calendar.
+export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, projectId, initialDueDate = "" }) {
     const currentWorkspace = useCurrentWorkspace();
     const { user } = useUser();
     const { isOwner } = useOrgRole();
@@ -27,7 +29,7 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
         status: "TODO",
         priority: defaultTaskPriority,
         assigneeId: "",
-        due_date: "",
+        due_date: initialDueDate,
     });
     const [formData, setFormData] = useState(emptyForm);
 

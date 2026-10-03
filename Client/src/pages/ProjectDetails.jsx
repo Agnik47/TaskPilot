@@ -1,14 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeftIcon, PlusIcon, SettingsIcon, BarChart3Icon, CalendarIcon, FileStackIcon, ZapIcon, Rows3Icon, Grid3x3Icon, KanbanSquareIcon } from "lucide-react";
-import ProjectAnalytics from "../components/ProjectAnalytics";
 import ProjectSettings from "../components/ProjectSettings";
 import CreateTaskDialog from "../components/CreateTaskDialog";
 import ProjectCalendar from "../components/ProjectCalendar";
 import ProjectTasks from "../components/ProjectTasks";
 import TaskSheet from "../components/TaskSheet";
 import TaskBoard from "../components/board/TaskBoard";
+
+// The charting library is only needed on the Analytics tab, so it loads when
+// that tab is first opened instead of with the rest of the app.
+const ProjectAnalytics = lazy(() => import("../components/ProjectAnalytics"));
+
+const AnalyticsSkeleton = () => (
+    <div className="space-y-5 animate-pulse" aria-busy="true" aria-label="Loading analytics">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            {[0, 1, 2, 3].map((i) => <div key={i} className="h-24 rounded-lg bg-zinc-100 dark:bg-zinc-800/60" />)}
+        </div>
+        <div className="h-48 rounded-lg bg-zinc-100 dark:bg-zinc-800/60" />
+        <div className="h-64 rounded-lg bg-zinc-100 dark:bg-zinc-800/60" />
+    </div>
+);
 
 // Each person's last-used task view, per device (falls back to the workspace default).
 const VIEW_KEY = "taskView";
@@ -170,12 +183,14 @@ export default function ProjectDetail() {
                     )}
                     {activeTab === "analytics" && (
                         <div className=" dark:bg-zinc-900/40 rounded max-w-6xl">
-                            <ProjectAnalytics tasks={tasks} project={project} />
+                            <Suspense fallback={<AnalyticsSkeleton />}>
+                                <ProjectAnalytics tasks={tasks} project={project} />
+                            </Suspense>
                         </div>
                     )}
                     {activeTab === "calendar" && (
                         <div className=" dark:bg-zinc-900/40 rounded max-w-6xl">
-                            <ProjectCalendar tasks={tasks} />
+                            <ProjectCalendar tasks={tasks} project={project} />
                         </div>
                     )}
                     {activeTab === "settings" && (

@@ -1,197 +1,222 @@
-import { useState } from "react";
-import { useSelector } from "react-redux";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { useUser } from "@clerk/clerk-react";
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import { addDays, addMonths, differenceInCalendarDays, format, isSameMonth, startOfDay, startOfMonth } from "date-fns";
+import toast from "react-hot-toast";
+import { CalendarIcon, ChevronLeft, ChevronRight } from "lucide-react";
+import useOrgRole from "../hooks/useOrgRole";
+import { updateTask } from "../features/workspaceSlice";
+import { dayEntries, dayKey, dueKey, indexByDay, monthDays } from "../lib/calendar";
+import { dueDateOf, dueInfo } from "../lib/dates";
 import { isSettled } from "../lib/taskWorkflow";
-import { format, isSameDay, isBefore, startOfMonth, endOfMonth, eachDayOfInterval, getDay, addMonths, subMonths } from "date-fns";
-import { CalendarIcon, Clock, User, ChevronLeft, ChevronRight } from "lucide-react";
+import { peopleOptions } from "../lib/people";
+import Card from "./Card";
+import FilterSelect from "./FilterSelect";
+import CompletedToggle from "./CompletedToggle";
+import CreateTaskDialog from "./CreateTaskDialog";
+import DayCell from "./calendar/DayCell";
+import DayPanel from "./calendar/DayPanel";
+import { TaskChip } from "./calendar/TaskChip";
 
-const typeColors = {
-    BUG: "bg-red-200 text-red-800 dark:bg-red-500 dark:text-red-900",
-    FEATURE: "bg-blue-200 text-blue-800 dark:bg-blue-500 dark:text-blue-900",
-    TASK: "bg-green-200 text-green-800 dark:bg-green-500 dark:text-green-900",
-    IMPROVEMENT: "bg-purple-200 text-purple-800 dark:bg-purple-500 dark:text-purple-900",
-    OTHER: "bg-amber-200 text-amber-800 dark:bg-amber-500 dark:text-amber-900",
-};
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const ARROWS = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+const keyToDate = (key) => dueDateOf({ due_date: key });
 
-const priorityBorders = {
-    LOW: "border-zinc-300 dark:border-zinc-600",
-    MEDIUM: "border-amber-300 dark:border-amber-500",
-    HIGH: "border-orange-300 dark:border-orange-500",
-    URGENT: "border-red-400 dark:border-red-500",
-};
+// Upcoming work in the order people plan it: today, tomorrow, this week, later.
+function groupUpcoming(tasks, today) {
+    const groups = [
+        { label: "Today", tasks: [] },
+        { label: "Tomorrow", tasks: [] },
+        { label: "Next 7 days", tasks: [], showDue: true },
+        { label: "Later", tasks: [], showDue: true },
+    ];
+    for (const task of tasks) {
+        const days = differenceInCalendarDays(dueDateOf(task), today);
+        groups[days <= 0 ? 0 : days === 1 ? 1 : days <= 7 ? 2 : 3].tasks.push(task);
+    }
+    return groups.filter((g) => g.tasks.length > 0);
+}
 
-const ProjectCalendar = ({ tasks }) => {
-    const [selectedDate, setSelectedDate] = useState(new Date());
-    const [currentMonth, setCurrentMonth] = useState(new Date());
+const ProjectCalendar = ({ tasks, project }) => {
+    const dispatch = useDispatch();
+    const { user } = useUser();
+    const { isOwner } = useOrgRole();
     const weekStartsOn = useSelector((state) => state.workspace.settings.weekStartsOn);
-    const weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-    const orderedWeekdays = [...weekdayLabels.slice(weekStartsOn), ...weekdayLabels.slice(0, weekStartsOn)];
 
-    const today = new Date();
-    const getTasksForDate = (date) => tasks.filter((task) => isSameDay(task.due_date, date));
+    const [today] = useState(() => startOfDay(new Date()));
+    const todayKey = dayKey(today);
+    const [month, setMonth] = useState(() => startOfMonth(today));
+    const [selectedKey, setSelectedKey] = useState(todayKey);
+    const [assignee, setAssignee] = useState("");
+    const [showCompleted, setShowCompleted] = useState(false);
+    const [createFor, setCreateFor] = useState(null);
+    const [dragging, setDragging] = useState(null);
+    const gridRef = useRef(null);
+    const focusKey = useRef(null);
 
-    const upcomingTasks = tasks
-        .filter((task) => task.due_date && !isBefore(task.due_date, today) && !isSettled(task.status))
-        .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
-        .slice(0, 5);
+    const me = user?.id;
+    // Same rule as the task table: being waited on lets you see a task, not change it.
+    const canEdit = useCallback((task) => isOwner || task.creatorId === me || task.assigneeId === me, [isOwner, me]);
 
-    const overdueTasks = tasks.filter((task) => task.due_date && isBefore(task.due_date, today) && !isSettled(task.status));
+    const assigneeOptions = useMemo(() => peopleOptions(tasks.map((t) => t.assignee).filter(Boolean), me), [tasks, me]);
+    const completedCount = useMemo(() => tasks.filter((t) => t.status === "DONE").length, [tasks]);
 
-    const daysInMonth = eachDayOfInterval({
-        start: startOfMonth(currentMonth),
-        end: endOfMonth(currentMonth),
-    });
-    // Blank cells so the 1st lands under the correct weekday column.
-    const leadingBlanks = (getDay(startOfMonth(currentMonth)) - weekStartsOn + 7) % 7;
+    const visible = useMemo(
+        () => tasks.filter((t) => (!assignee || t.assigneeId === assignee) && (showCompleted || t.status !== "DONE")),
+        [tasks, assignee, showCompleted]
+    );
+    const index = useMemo(() => indexByDay(visible), [visible]);
 
+    const { overdue, upcoming, undated } = useMemo(() => {
+        const byDue = (a, b) => dueDateOf(a) - dueDateOf(b);
+        const open = visible.filter((t) => !isSettled(t.status));
+        return {
+            overdue: open.filter((t) => dueInfo(t, today)?.overdue).sort(byDue),
+            upcoming: groupUpcoming(open.filter((t) => t.due_date && !dueInfo(t, today).overdue).sort(byDue), today),
+            undated: visible.filter((t) => !t.due_date && t.status !== "DONE"),
+        };
+    }, [visible, today]);
 
-    const handleMonthChange = (direction) => {
-        setCurrentMonth((prev) => (direction === "next" ? addMonths(prev, 1) : subMonths(prev, 1)));
+    const days = useMemo(
+        () => monthDays(month, weekStartsOn).map((date) => ({ key: dayKey(date), number: date.getDate(), label: format(date, "EEEE, d MMMM"), inMonth: isSameMonth(date, month) })),
+        [month, weekStartsOn]
+    );
+    const weekdays = [...WEEKDAYS.slice(weekStartsOn), ...WEEKDAYS.slice(0, weekStartsOn)];
+
+    // Project start and deadline, shown as a flag on their day.
+    const milestones = useMemo(() => {
+        const map = {};
+        const start = dueKey(project?.start_date);
+        const end = dueKey(project?.end_date);
+        if (start) map[start] = "Project starts";
+        if (end) map[end] = start === end ? "Project starts and is due" : "Project deadline";
+        return map;
+    }, [project?.start_date, project?.end_date]);
+
+    const select = useCallback((key) => setSelectedKey(key), []);
+    const openCreate = useCallback((key) => setCreateFor(key), []);
+
+    const goTo = (date) => {
+        setMonth(startOfMonth(date));
+        setSelectedKey(dayKey(date));
     };
 
+    // Arrow keys move the selected day (and the month with it).
+    const onGridKeyDown = (e) => {
+        const step = ARROWS[e.key];
+        if (!step || !e.target.dataset?.day) return;
+        e.preventDefault();
+        const next = addDays(keyToDate(e.target.dataset.day), step);
+        focusKey.current = dayKey(next);
+        goTo(next);
+    };
+    useEffect(() => {
+        if (!focusKey.current) return;
+        gridRef.current?.querySelector(`[data-day="${focusKey.current}"]`)?.focus();
+        focusKey.current = null;
+    }, [selectedKey, month]);
+
+    // A small movement threshold keeps a click on a chip a click.
+    const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+    const onDragEnd = async ({ active, over }) => {
+        setDragging(null);
+        const task = active.data.current?.task;
+        if (!task || !over || over.id === dueKey(task.due_date)) return;
+        try {
+            await dispatch(updateTask({ id: task.id, due_date: over.id })).unwrap();
+            toast.success(`Due ${format(keyToDate(over.id), "EEE, d MMM")}`);
+        } catch (error) {
+            toast.error(error?.message || "Couldn't change the due date");
+        }
+    };
+
+    const selected = { key: selectedKey, date: keyToDate(selectedKey) };
+
     return (
-        <div className="grid lg:grid-cols-3 gap-6">
-            {/* Calendar View */}
-            <div className="lg:col-span-2 ">
-                <div className="not-dark:bg-white dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-zinc-900 dark:text-white text-md flex gap-2 items-center max-sm:hidden">
-                            <CalendarIcon className="size-5" /> Task Calendar
-                        </h2>
-                        <div className="flex gap-2 items-center">
-                            <button onClick={() => handleMonthChange("prev")}>
-                                <ChevronLeft className="size-5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white" />
+        <DndContext sensors={sensors} onDragStart={({ active }) => setDragging(active.data.current?.task || null)} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
+            <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+                <Card className="lg:col-span-2 self-start">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div className="flex items-center gap-1">
+                            <h2 className="mr-2 flex items-center gap-2 font-medium text-zinc-900 dark:text-white">
+                                <CalendarIcon className="size-4 text-zinc-500 dark:text-zinc-400" />
+                                <span className="min-w-32" aria-live="polite">{format(month, "MMMM yyyy")}</span>
+                            </h2>
+                            <button type="button" onClick={() => setMonth(addMonths(month, -1))} aria-label="Previous month" className="p-1 rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                                <ChevronLeft className="size-5" />
                             </button>
-                            <span className="text-zinc-900 dark:text-white">{format(currentMonth, "MMMM yyyy")}</span>
-                            <button onClick={() => handleMonthChange("next")}>
-                                <ChevronRight className="size-5 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white" />
+                            <button type="button" onClick={() => setMonth(addMonths(month, 1))} aria-label="Next month" className="p-1 rounded text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                                <ChevronRight className="size-5" />
                             </button>
+                            <button type="button" onClick={() => goTo(today)} className="ml-1 px-2.5 py-1 rounded border border-zinc-300 dark:border-zinc-700 text-sm text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                                Today
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {isOwner && assigneeOptions.length > 1 && (
+                                <FilterSelect
+                                    label="Assignee"
+                                    value={assignee}
+                                    options={[{ value: "", label: "All assignees" }, ...assigneeOptions]}
+                                    onChange={setAssignee}
+                                    searchPlaceholder="Search people by name or email…"
+                                    menuWidth={280}
+                                    showImage
+                                />
+                            )}
+                            <CompletedToggle shown={showCompleted} count={completedCount} onChange={setShowCompleted} />
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-7 text-xs text-zinc-600 dark:text-zinc-400 mb-2 text-center">
-                        {orderedWeekdays.map((day) => (
-                            <div key={day}>{day}</div>
-                        ))}
+                    <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1.5 text-center text-xs text-zinc-500 dark:text-zinc-400">
+                        {weekdays.map((day) => <div key={day}>{day}</div>)}
                     </div>
 
-                    <div className="grid grid-cols-7 gap-2">
-                        {Array.from({ length: leadingBlanks }, (_, i) => <div key={`blank-${i}`} />)}
-                        {daysInMonth.map((day) => {
-                            const dayTasks = getTasksForDate(day);
-                            const isSelected = isSameDay(day, selectedDate);
-                            const hasOverdue = dayTasks.some((t) => !isSettled(t.status) && isBefore(t.due_date, today));
-
+                    <div ref={gridRef} onKeyDown={onGridKeyDown} className="grid grid-cols-7 gap-1 sm:gap-1.5">
+                        {days.map((day) => {
+                            const entries = dayEntries(index, day.key);
                             return (
-                                <button
-                                    key={day}
-                                    onClick={() => setSelectedDate(day)}
-                                    className={`sm:h-14 rounded-md flex flex-col items-center justify-center text-sm
-                                    ${isSelected ? "bg-blue-200 text-blue-900 dark:bg-blue-600 dark:text-white" : "bg-zinc-50 text-zinc-900 dark:bg-zinc-800/40 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700"}
-                                    ${hasOverdue ? "border border-red-300 dark:border-red-500" : ""}`}
-                                >
-                                    <span>{format(day, "d")}</span>
-                                    {dayTasks.length > 0 && (
-                                        <span className="text-[10px] text-blue-700 dark:text-blue-400">{dayTasks.length} tasks</span>
-                                    )}
-                                </button>
+                                <DayCell
+                                    key={day.key}
+                                    day={day}
+                                    tasks={entries.tasks}
+                                    items={entries.items}
+                                    milestone={milestones[day.key]}
+                                    inMonth={day.inMonth}
+                                    isToday={day.key === todayKey}
+                                    isPast={day.key < todayKey}
+                                    isSelected={day.key === selectedKey}
+                                    canEdit={canEdit}
+                                    onSelect={select}
+                                    onCreate={openCreate}
+                                />
                             );
                         })}
                     </div>
-                </div>
+                    <p className="max-sm:hidden mt-3 text-xs text-zinc-500 dark:text-zinc-400">Drag a task to another day to change its due date.</p>
+                </Card>
 
-                {/* Tasks for Selected Day */}
-                {getTasksForDate(selectedDate).length > 0 && (
-                    <div className=" not-dark:bg-white mt-6 dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4">
-                        <h3 className="text-zinc-900 dark:text-white text-lg mb-3">
-                            Tasks for {format(selectedDate, "MMM d, yyyy")}
-                        </h3>
-                        <div className="space-y-3">
-                            {getTasksForDate(selectedDate).map((task) => (
-                                <div
-                                    key={task.id}
-                                    className={`bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition p-4 rounded border-l-4 ${priorityBorders[task.priority]}`}
-                                >
-                                    <div className="flex justify-between mb-2">
-                                        <h4 className="text-zinc-900 dark:text-white font-medium">{task.title}</h4>
-                                        <span className={`px-2 py-0.5 rounded text-xs ${typeColors[task.type]}`}>
-                                            {task.type}
-                                        </span>
-                                    </div>
-                                    <div className="flex justify-between text-xs text-zinc-600 dark:text-zinc-400">
-                                        <span className="capitalize">{task.priority.toLowerCase()} priority</span>
-                                        {task.assignee && (
-                                            <span className="flex items-center gap-1">
-                                                <User className="w-3 h-3" />
-                                                {task.assignee.name}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+                <DayPanel
+                    selected={selected}
+                    entries={dayEntries(index, selectedKey)}
+                    milestone={milestones[selectedKey]}
+                    isPast={selectedKey < todayKey}
+                    overdue={overdue}
+                    upcoming={upcoming}
+                    undated={undated}
+                    canEdit={canEdit}
+                    onCreate={openCreate}
+                />
             </div>
 
-            {/* Sidebar */}
-            <div className="space-y-6">
-                {/* Upcoming Tasks */}
-                <div className="bg-white dark:bg-zinc-950 dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-300 dark:border-zinc-800 rounded-lg p-4">
-                    <h3 className="text-zinc-900 dark:text-white text-sm flex items-center gap-2 mb-3">
-                        <Clock className="w-4 h-4" /> Upcoming Tasks
-                    </h3>
-                    {upcomingTasks.length === 0 ? (
-                        <p className="text-zinc-500 dark:text-zinc-400 text-sm text-center">No upcoming tasks</p>
-                    ) : (
-                        <div className="space-y-2">
-                            {upcomingTasks.map((task) => (
-                                <div
-                                    key={task.id}
-                                    className="bg-zinc-50 dark:bg-zinc-800/40 hover:bg-zinc-100 dark:hover:bg-zinc-800 p-3 rounded-lg transition"
-                                >
-                                    <div className="flex justify-between items-start text-sm">
-                                        <span className="text-zinc-900 dark:text-white">{task.title}</span>
-                                        <span className={`text-xs px-2 py-0.5 rounded ${typeColors[task.type]}`}>
-                                            {task.type}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-zinc-600 dark:text-zinc-400">{format(task.due_date, "MMM d")}</p>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
+            <DragOverlay dropAnimation={null}>{dragging && <TaskChip task={dragging} overlay />}</DragOverlay>
 
-                {/* Overdue Tasks */}
-                {overdueTasks.length > 0 && (
-                    <div className="bg-white dark:bg-zinc-950  border border-red-300 dark:border-red-500 border-l-4 rounded-lg p-4">
-                        <h3 className="text-red-700 dark:text-red-400 text-sm flex items-center gap-2 mb-3">
-                            <Clock className="w-4 h-4" /> Overdue Tasks ({overdueTasks.length})
-                        </h3>
-                        <div className="space-y-2">
-                            {overdueTasks.slice(0, 5).map((task) => (
-                                <div key={task.id} className="bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 p-3 rounded-lg transition" >
-                                    <div className="flex justify-between text-sm text-zinc-900 dark:text-white">
-                                        <span>{task.title}</span>
-                                        <span className="text-xs px-2 py-0.5 rounded bg-red-200 dark:bg-red-500 text-red-900 dark:text-red-900">
-                                            {task.type}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-red-600 dark:text-red-300">
-                                        Due {format(task.due_date, "MMM d")}
-                                    </p>
-                                </div>
-                            ))}
-                            {overdueTasks.length > 5 && (
-                                <p className="text-xs text-zinc-500 dark:text-zinc-400 text-center">
-                                    +{overdueTasks.length - 5} more
-                                </p>
-                            )}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
+            {createFor && (
+                <CreateTaskDialog showCreateTask setShowCreateTask={(open) => !open && setCreateFor(null)} projectId={project?.id} initialDueDate={createFor} />
+            )}
+        </DndContext>
     );
 };
 
