@@ -1,23 +1,29 @@
 import { useMemo, useState } from "react";
 import { useSelector } from "react-redux";
+import { useUser } from "@clerk/clerk-react";
 import { Link } from "react-router-dom";
 import { formatDistanceToNowStrict } from "date-fns";
 import { CheckCircle2, ChevronRight, Loader2Icon, RotateCcw, ShieldCheck } from "lucide-react";
 import useOrgRole from "../../hooks/useOrgRole";
 import useTaskActions from "../../hooks/useTaskActions";
+import { peopleOptions } from "../../lib/people";
+import FilterSelect from "../FilterSelect";
 import RequestChangesDialog from "./RequestChangesDialog";
 
 const VISIBLE = 5;
 
 // Owner's inbox of finished work awaiting sign-off, oldest first so nothing
 // sits forgotten. Only rendered for owners, and only when there's something to review.
+// With several people waiting, the owner can narrow the list to one employee.
 export default function ReviewQueue() {
     const { isOwner } = useOrgRole();
+    const { user } = useUser();
     const projects = useSelector((state) => state.workspace.projects);
     const { approve, requestChanges } = useTaskActions();
     const [busyId, setBusyId] = useState(null);
     const [asking, setAsking] = useState(null);
     const [showAll, setShowAll] = useState(false);
+    const [employee, setEmployee] = useState("");
 
     const waiting = useMemo(
         () =>
@@ -27,8 +33,18 @@ export default function ReviewQueue() {
         [projects]
     );
 
+    const employeeOptions = useMemo(() => {
+        const counts = {};
+        waiting.forEach((t) => { counts[t.assigneeId] = (counts[t.assigneeId] || 0) + 1; });
+        const people = peopleOptions(waiting.map((t) => t.assignee).filter(Boolean), user?.id);
+        return [{ value: "", label: "Everyone", hint: String(waiting.length) }, ...people.map((p) => ({ ...p, hint: String(counts[p.value]) }))];
+    }, [waiting, user?.id]);
+
     if (!isOwner || waiting.length === 0) return null;
-    const shown = showAll ? waiting : waiting.slice(0, VISIBLE);
+    // Approving someone's last task empties their filter; fall back to everyone.
+    const activeEmployee = employeeOptions.some((o) => o.value === employee) ? employee : "";
+    const filtered = activeEmployee ? waiting.filter((t) => t.assigneeId === activeEmployee) : waiting;
+    const shown = showAll ? filtered : filtered.slice(0, VISIBLE);
 
     const onApprove = async (task) => {
         setBusyId(task.id);
@@ -41,9 +57,13 @@ export default function ReviewQueue() {
             <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-violet-100 dark:border-violet-500/20 bg-violet-50/70 dark:bg-violet-500/10">
                 <h2 className="flex items-center gap-2 text-sm font-semibold text-violet-900 dark:text-violet-100">
                     <ShieldCheck className="size-4" /> Waiting for your review
-                    <span className="px-1.5 py-0.5 rounded-full text-xs bg-violet-600 text-white">{waiting.length}</span>
+                    <span className="px-1.5 py-0.5 rounded-full text-xs bg-violet-600 text-white">{filtered.length}</span>
                 </h2>
-                <p className="hidden sm:block text-xs text-violet-800/70 dark:text-violet-200/70">Oldest first</p>
+                {employeeOptions.length > 2 ? (
+                    <FilterSelect label="Employee" value={activeEmployee} options={employeeOptions} onChange={setEmployee} showImage inactiveLabel="All employees" searchPlaceholder="Search by name or email" menuWidth={260} />
+                ) : (
+                    <p className="hidden sm:block text-xs text-violet-800/70 dark:text-violet-200/70">Oldest first</p>
+                )}
             </header>
 
             <ul className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -73,9 +93,9 @@ export default function ReviewQueue() {
                 ))}
             </ul>
 
-            {waiting.length > VISIBLE && (
+            {filtered.length > VISIBLE && (
                 <button type="button" onClick={() => setShowAll((v) => !v)} className="w-full px-4 py-2.5 text-sm text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 border-t border-zinc-100 dark:border-zinc-800">
-                    {showAll ? "Show less" : `Show all ${waiting.length}`}
+                    {showAll ? "Show less" : `Show all ${filtered.length}`}
                 </button>
             )}
 

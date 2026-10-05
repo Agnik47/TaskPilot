@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
-import { GitCommit, MessageSquare, Clock, UserPlus, ArrowRightLeft, Flag, Calendar, CheckCircle2, ShieldCheck, RotateCcw, Hourglass, Unlock, ListChecks } from "lucide-react";
-import { format } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { GitCommit, MessageSquare, UserPlus, ArrowRightLeft, Flag, Calendar, CheckCircle2, ShieldCheck, RotateCcw, Hourglass, Unlock, ListChecks } from "lucide-react";
+import { format, formatDistanceToNowStrict, isToday, isYesterday } from "date-fns";
 import { useOrganization } from "@clerk/clerk-react";
 import api from "../lib/api";
 
@@ -21,60 +22,90 @@ const activityIcons = {
     CHECKLIST_ITEM_COMPLETED: { icon: ListChecks, color: "text-emerald-500 dark:text-emerald-400" },
 };
 
+const VISIBLE = 8;
+
+const dayLabel = (date) => (isToday(date) ? "Today" : isYesterday(date) ? "Yesterday" : format(date, "EEEE, d MMM"));
+
+// A short feed of what changed, grouped by day. It's context rather than a
+// to-do list, so it stays compact and shows only the latest few until asked.
 const RecentActivity = () => {
     const { organization } = useOrganization();
-    const [activity, setActivity] = useState([]);
+    const [activity, setActivity] = useState(null);
+    const [showAll, setShowAll] = useState(false);
 
     useEffect(() => {
         if (!organization) return;
         api.get("/activity").then(({ data }) => setActivity(data)).catch(() => setActivity([]));
     }, [organization?.id]);
 
+    const days = useMemo(() => {
+        const shown = showAll ? activity || [] : (activity || []).slice(0, VISIBLE);
+        const byDay = new Map();
+        shown.forEach((item) => {
+            const label = dayLabel(new Date(item.createdAt));
+            byDay.set(label, [...(byDay.get(label) || []), item]);
+        });
+        return [...byDay.entries()];
+    }, [activity, showAll]);
+
     return (
-        <div className="bg-white dark:bg-zinc-950 dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 rounded-lg transition-all overflow-hidden">
-            <div className="border-b border-zinc-200 dark:border-zinc-800 p-4">
-                <h2 className="text-lg text-zinc-800 dark:text-zinc-200">Recent Activity</h2>
-            </div>
+        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden">
+            <h2 className="px-4 py-3 font-medium text-zinc-900 dark:text-white border-b border-zinc-100 dark:border-zinc-800">Recent activity</h2>
 
-            <div className="p-0">
-                {activity.length === 0 ? (
-                    <div className="p-12 text-center">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center">
-                            <Clock className="w-8 h-8 text-zinc-600 dark:text-zinc-500" />
+            {activity === null ? (
+                <div className="p-4 space-y-3" aria-hidden>
+                    {[0, 1, 2].map((i) => <div key={i} className="h-8 rounded bg-zinc-100 dark:bg-zinc-900 animate-pulse" />)}
+                </div>
+            ) : activity.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
+                    Changes to your tasks will show up here.
+                </p>
+            ) : (
+                <div className="pb-1">
+                    {days.map(([label, items]) => (
+                        <div key={label}>
+                            <h3 className="px-4 pt-3 pb-1 text-xs font-medium text-zinc-400 dark:text-zinc-500">{label}</h3>
+                            <ul>
+                                {items.map((item) => {
+                                    const TypeIcon = activityIcons[item.type]?.icon || GitCommit;
+                                    const iconColor = activityIcons[item.type]?.color || "text-zinc-500 dark:text-zinc-400";
+                                    const body = (
+                                        <>
+                                            <TypeIcon className={`size-4 mt-0.5 shrink-0 ${iconColor}`} />
+                                            <span className="min-w-0 flex-1">
+                                                <span className="block text-sm text-zinc-800 dark:text-zinc-200 line-clamp-2">{item.message}</span>
+                                                <span className="flex gap-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                                    {item.task?.title && <span className="truncate">{item.task.title}</span>}
+                                                    <span className="shrink-0 text-zinc-400 dark:text-zinc-500">{formatDistanceToNowStrict(new Date(item.createdAt))} ago</span>
+                                                </span>
+                                            </span>
+                                        </>
+                                    );
+                                    const rowClass = "flex items-start gap-3 px-4 py-2";
+                                    return (
+                                        <li key={item.id}>
+                                            {item.task?.id && item.projectId ? (
+                                                <Link to={`/taskDetails?projectId=${item.projectId}&taskId=${item.task.id}`} className={`${rowClass} hover:bg-zinc-50 dark:hover:bg-zinc-900/60 transition-colors`}>
+                                                    {body}
+                                                </Link>
+                                            ) : (
+                                                <div className={rowClass}>{body}</div>
+                                            )}
+                                        </li>
+                                    );
+                                })}
+                            </ul>
                         </div>
-                        <p className="text-zinc-600 dark:text-zinc-400">No recent activity</p>
-                    </div>
-                ) : (
-                    <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-                        {activity.map((item) => {
-                            const TypeIcon = activityIcons[item.type]?.icon || GitCommit;
-                            const iconColor = activityIcons[item.type]?.color || "text-gray-500 dark:text-gray-400";
+                    ))}
+                </div>
+            )}
 
-                            return (
-                                <div key={item.id} className="p-6 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors">
-                                    <div className="flex items-start gap-4">
-                                        <div className="p-2 bg-zinc-200 dark:bg-zinc-800 rounded-lg">
-                                            <TypeIcon className={`w-4 h-4 ${iconColor}`} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-start justify-between mb-1">
-                                                <h4 className="text-zinc-800 dark:text-zinc-200 truncate">
-                                                    {item.message}
-                                                </h4>
-                                            </div>
-                                            <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-                                                {item.task?.title && <span className="truncate">{item.task.title}</span>}
-                                                <span>{format(new Date(item.createdAt), "MMM d, h:mm a")}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-            </div>
-        </div>
+            {activity?.length > VISIBLE && (
+                <button type="button" onClick={() => setShowAll((v) => !v)} className="w-full px-4 py-2.5 text-sm text-zinc-600 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-900/60 border-t border-zinc-100 dark:border-zinc-800">
+                    {showAll ? "Show less" : `Show ${activity.length - VISIBLE} more`}
+                </button>
+            )}
+        </section>
     );
 };
 
