@@ -1,7 +1,9 @@
 import prisma from '../config/prisma.js';
 import { logActivitiesInBackground } from '../services/activity.service.js';
 import { notifyInBackground } from '../services/notifications.service.js';
-import { canEditTask, canResolveBlocker } from '../services/authorization.service.js';
+import { canEditTask, canResolveBlocker, isOwner } from '../services/authorization.service.js';
+import { planStatusChange } from '../services/taskWorkflow.service.js';
+import { getWorkspaceSettings } from '../services/workspaceSettings.service.js';
 import { NUDGE_COOLDOWN_MS } from '../services/blockers.service.js';
 import { emitToTask } from '../realtime.js';
 import { taskInclude } from './tasks.controller.js';
@@ -112,15 +114,34 @@ export async function resolveBlocker(req, res, next) {
     }
 
     const me = req.dbUser;
-    const lastOne = task.blockers.every((b) => b.id === blocker.id);
-    const backToWork = lastOne && task.status === 'BLOCKED';
 
-    const [, , comment] = await Promise.all([
-      prisma.taskBlocker.update({
-        where: { id: blocker.id },
-        data: { resolvedAt: new Date(), resolvedById: me.id, resolutionNote: note || null },
-      }),
-      backToWork ? prisma.task.update({ where: { id: task.id }, data: { status: 'IN_PROGRESS' } }) : null,
+    // Conditional on still being open, so two people resolving it at once
+    // can't both "win" (and double-notify).
+    const closed = await prisma.taskBlocker.updateMany({
+      where: { id: blocker.id, resolvedAt: null },
+      data: { resolvedAt: new Date(), resolvedById: me.id, resolutionNote: note || null },
+    });
+    if (closed.count === 0) {
+      return res.status(409).json({ error: 'ALREADY_RESOLVED', message: 'This is already unblocked.' });
+    }
+
+    // Back to In Progress once nothing is left blocking it. Decided by the
+    // database in one statement (still Blocked, no open blockers), not from the
+    // task as read above, so resolving two blockers at once still moves it
+    // exactly once. The change goes through the workflow like any other.
+    const moveBackToWork = async () => {
+      const settings = await getWorkspaceSettings(req.workspaceId);
+      const plan = planStatusChange({ task, requested: 'IN_PROGRESS', actorIsOwner: isOwner(req.orgRole), settings });
+      if (!plan.data) return false;
+      const moved = await prisma.task.updateMany({
+        where: { id: task.id, status: 'BLOCKED', blockers: { none: { resolvedAt: null } } },
+        data: plan.data,
+      });
+      return moved.count > 0;
+    };
+
+    const [backToWork, comment] = await Promise.all([
+      task.status === 'BLOCKED' ? moveBackToWork() : false,
       note ? prisma.comment.create({ data: { workspaceId: req.workspaceId, content: note, userId: me.id, taskId: task.id } }) : null,
     ]);
     if (comment) emitToTask(task.id, 'comment:new', { ...comment, user: me });

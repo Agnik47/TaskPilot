@@ -41,6 +41,55 @@ async function nextPosition(projectId) {
   return (_max.position ?? 0) + 1;
 }
 
+const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
+const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
+const CREATE_STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE']; // IN_REVIEW is only reached by finishing a task
+const MAX_TITLE = 500;
+
+// Validates one new task's fields. Single and bulk creation both use this, so
+// they accept exactly the same input. `row` (1-based, bulk only) prefixes the
+// messages so the sheet can point at the bad row.
+function validateNewTask(input, row) {
+  const errors = [];
+  const fail = (field, text) =>
+    errors.push({ ...(row ? { row } : {}), field, message: row ? `Row ${row}: ${text}` : text[0].toUpperCase() + text.slice(1) });
+
+  const title = typeof input?.title === 'string' ? input.title.trim() : '';
+  const due = parseDueDate(input?.due_date);
+
+  if (!title) fail('title', 'title is required.');
+  else if (title.length > MAX_TITLE) fail('title', 'title is too long.');
+  if (due === undefined) fail('due_date', "the due date isn't a valid date.");
+  if (input?.type && !TASK_TYPES.includes(input.type)) fail('type', 'invalid type.');
+  if (input?.priority && !PRIORITIES.includes(input.priority)) fail('priority', 'invalid priority.');
+  if (input?.status === 'IN_REVIEW') fail('status', "a new task can't start in review.");
+  else if (input?.status && !CREATE_STATUSES.includes(input.status)) fail('status', 'invalid status.');
+
+  const description = typeof input?.description === 'string' && input.description.trim() ? input.description.trim() : null;
+  const status = input?.status || undefined;
+
+  return {
+    errors,
+    fields: {
+      title,
+      description,
+      type: input?.type || undefined,
+      priority: input?.priority || undefined,
+      status,
+      due_date: due,
+      completedAt: status === 'DONE' ? new Date() : null,
+    },
+  };
+}
+
+// Tasks can be assigned to project members, or to the person creating them.
+const projectForCreate = { id: true, name: true, workspaceId: true, members: { select: { userId: true } } };
+const assignableIn = (project, dbUserId) => new Set([...project.members.map((m) => m.userId), dbUserId]);
+const projectRef = ({ id, name, workspaceId }) => ({ id, name, workspaceId });
+
+const validationError = (res, errors) =>
+  res.status(400).json({ error: 'VALIDATION_ERROR', message: errors[0].message, errors });
+
 export async function listTasks(req, res, next) {
   try {
     const where = { workspaceId: req.workspaceId };
@@ -78,54 +127,42 @@ export async function getTask(req, res, next) {
 
 export async function createTask(req, res, next) {
   try {
-    const { title, description, type, priority, status, assigneeId, due_date, projectId } = req.body;
-
-    if (!title || !projectId) {
-      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'title and projectId are required.' });
+    const { projectId } = req.body;
+    if (!projectId) {
+      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'projectId is required.' });
     }
-    const due = parseDueDate(due_date);
-    if (due === undefined) {
-      return res.status(400).json({ error: 'VALIDATION_ERROR', message: 'due_date is not a valid date.' });
-    }
-    if (status === 'IN_REVIEW') {
-      return res.status(400).json({ error: 'VALIDATION_ERROR', message: "A new task can't start in review." });
-    }
+    const { errors, fields } = validateNewTask(req.body);
+    if (errors.length) return validationError(res, errors);
 
     const [project, position] = await Promise.all([
-      prisma.project.findUnique({
-        where: { id: projectId },
-        select: { id: true, name: true, workspaceId: true },
-      }),
+      prisma.project.findUnique({ where: { id: projectId }, select: projectForCreate }),
       nextPosition(projectId),
     ]);
     if (!project || project.workspaceId !== req.workspaceId) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Project not found.' });
     }
 
-    const finalAssigneeId = resolveAssigneeId(req.dbUser.id, req.orgRole, assigneeId);
+    const finalAssigneeId = resolveAssigneeId(req.dbUser.id, req.orgRole, req.body.assigneeId);
+    if (!assignableIn(project, req.dbUser.id).has(finalAssigneeId)) {
+      return validationError(res, [{ field: 'assigneeId', message: "The assignee isn't a member of this project." }]);
+    }
 
     const [created, assignee] = await Promise.all([
       prisma.task.create({
         data: {
+          ...fields,
           workspaceId: req.workspaceId,
           projectId,
-          title,
-          description,
-          type,
-          status,
-          priority,
           creatorId: req.dbUser.id,
           assigneeId: finalAssigneeId,
-          due_date: due,
           position,
-          completedAt: status === 'DONE' ? new Date() : null,
         },
       }),
       finalAssigneeId === req.dbUser.id ? req.dbUser : prisma.user.findUnique({ where: { id: finalAssigneeId } }),
     ]);
 
     // Same shape as `include: taskInclude`, assembled from data already in hand.
-    const task = { ...created, assignee, creator: req.dbUser, project, blockers: [], checklist: [] };
+    const task = { ...created, assignee, creator: req.dbUser, project: projectRef(project), blockers: [], checklist: [] };
 
     logActivitiesInBackground([{
       workspaceId: req.workspaceId,
@@ -235,9 +272,13 @@ export async function updateTask(req, res, next) {
       }
     }
 
-    // Moving out of Blocked means the wait is over: close the open blockers so
-    // the status and the "Waiting on …" list never disagree.
-    const unblocking = data.status !== undefined && data.status !== 'BLOCKED' && existing.blockers.length > 0;
+    // Any status other than Blocked means the wait is over: close the open
+    // blockers so the status and the "Waiting on …" list never disagree.
+    // ("Blocked" with no blockers is fine: waiting on something, not someone.)
+    // The close-out runs whenever the status changes, not only when the read
+    // above saw blockers, so one added concurrently isn't left open.
+    const leavingBlocked = data.status !== undefined && data.status !== 'BLOCKED';
+    const unblocking = leavingBlocked && existing.blockers.length > 0;
     if (unblocking) {
       activities.push({
         type: 'BLOCKER_RESOLVED',
@@ -250,12 +291,12 @@ export async function updateTask(req, res, next) {
     const [updated, assignee] = await Promise.all([
       prisma.task.update({ where: { id: req.params.id }, data }),
       data.assigneeId !== undefined ? prisma.user.findUnique({ where: { id: data.assigneeId } }) : existing.assignee,
-      unblocking
+      leavingBlocked
         ? prisma.taskBlocker.updateMany({ where: { taskId: existing.id, resolvedAt: null }, data: { resolvedAt: new Date(), resolvedById: req.dbUser.id } })
         : null,
     ]);
 
-    const task = { ...updated, assignee, creator: existing.creator, project: existing.project, blockers: unblocking ? [] : existing.blockers, checklist: existing.checklist };
+    const task = { ...updated, assignee, creator: existing.creator, project: existing.project, blockers: leavingBlocked ? [] : existing.blockers, checklist: existing.checklist };
 
     logActivitiesInBackground(
       activities.map((activity) => ({
@@ -354,15 +395,12 @@ export async function deleteTask(req, res, next) {
   }
 }
 
-const TASK_TYPES = ['TASK', 'BUG', 'FEATURE', 'IMPROVEMENT', 'OTHER'];
-const PRIORITIES = ['LOW', 'MEDIUM', 'HIGH', 'URGENT'];
-const STATUSES = ['TODO', 'IN_PROGRESS', 'BLOCKED', 'DONE']; // IN_REVIEW is only reached by finishing a task
 const MAX_BULK_TASKS = 200;
 
 // Creates many tasks in one project at once (spreadsheet entry / paste from
-// Excel). Same rules as createTask — employees can only assign to themselves —
-// plus: every row is validated before anything is written, so a batch is all
-// or nothing, and owners can only assign to members of the project.
+// Excel). Same rules as createTask (validateNewTask, assignees limited to
+// project members, employees only themselves), plus: every row is validated
+// before anything is written, so a batch is all or nothing.
 export async function bulkCreateTasks(req, res, next) {
   try {
     const { projectId, tasks: rows } = req.body;
@@ -374,52 +412,28 @@ export async function bulkCreateTasks(req, res, next) {
       return res.status(400).json({ error: 'VALIDATION_ERROR', message: `You can create up to ${MAX_BULK_TASKS} tasks at once.` });
     }
 
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, name: true, workspaceId: true, members: { select: { userId: true } } },
-    });
+    const project = await prisma.project.findUnique({ where: { id: projectId }, select: projectForCreate });
     if (!project || project.workspaceId !== req.workspaceId) {
       return res.status(404).json({ error: 'NOT_FOUND', message: 'Project not found.' });
     }
 
-    const assignable = new Set([...project.members.map((m) => m.userId), req.dbUser.id]);
+    const assignable = assignableIn(project, req.dbUser.id);
     const errors = [];
 
     const data = rows.map((row, i) => {
       const n = i + 1;
-      const title = typeof row?.title === 'string' ? row.title.trim() : '';
-      const due = parseDueDate(row?.due_date);
-
-      if (!title) errors.push({ row: n, field: 'title', message: `Row ${n}: title is required.` });
-      else if (title.length > 500) errors.push({ row: n, field: 'title', message: `Row ${n}: title is too long.` });
-      if (due === undefined) errors.push({ row: n, field: 'due_date', message: `Row ${n}: the due date isn't a valid date.` });
-      if (row?.type && !TASK_TYPES.includes(row.type)) errors.push({ row: n, field: 'type', message: `Row ${n}: invalid type.` });
-      if (row?.priority && !PRIORITIES.includes(row.priority)) errors.push({ row: n, field: 'priority', message: `Row ${n}: invalid priority.` });
-      if (row?.status && !STATUSES.includes(row.status)) errors.push({ row: n, field: 'status', message: `Row ${n}: invalid status.` });
+      const checked = validateNewTask(row, n);
+      errors.push(...checked.errors);
 
       const assigneeId = resolveAssigneeId(req.dbUser.id, req.orgRole, row?.assigneeId);
       if (!assignable.has(assigneeId)) {
         errors.push({ row: n, field: 'assigneeId', message: `Row ${n}: the assignee isn't a member of this project.` });
       }
 
-      return {
-        workspaceId: req.workspaceId,
-        projectId,
-        title,
-        description: typeof row?.description === 'string' && row.description.trim() ? row.description.trim() : null,
-        type: row?.type || undefined,
-        priority: row?.priority || undefined,
-        status: row?.status || undefined,
-        creatorId: req.dbUser.id,
-        assigneeId,
-        due_date: due,
-        completedAt: row?.status === 'DONE' ? new Date() : null,
-      };
+      return { ...checked.fields, workspaceId: req.workspaceId, projectId, creatorId: req.dbUser.id, assigneeId };
     });
 
-    if (errors.length) {
-      return res.status(400).json({ error: 'VALIDATION_ERROR', message: errors[0].message, errors });
-    }
+    if (errors.length) return validationError(res, errors);
 
     const firstPosition = await nextPosition(projectId);
     data.forEach((d, i) => { d.position = firstPosition + i; });
@@ -431,8 +445,8 @@ export async function bulkCreateTasks(req, res, next) {
     ]);
 
     const usersById = new Map(users.map((u) => [u.id, u]));
-    const projectRef = { id: project.id, name: project.name, workspaceId: project.workspaceId };
-    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: projectRef, blockers: [], checklist: [] }));
+    const ref = projectRef(project);
+    const tasks = created.map((t) => ({ ...t, assignee: usersById.get(t.assigneeId) ?? null, creator: req.dbUser, project: ref, blockers: [], checklist: [] }));
 
     logActivitiesInBackground(
       tasks.map((t) => ({
